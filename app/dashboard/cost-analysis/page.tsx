@@ -397,9 +397,6 @@ export default function CostAnalysisPage() {
     }
   }, [config, selectedProviders, showNewAnalysis, availableProviders])
 
-  // Show notification when calculation is completed (only when form is first opened)
-  const [hasShownCalculationToast, setHasShownCalculationToast] = useState(false)
-  
   // Helper function to add notification to header (user panel)
   const addNotification = (title: string, description?: string, type: "success" | "info" | "error" | "warning" = "info") => {
     if (typeof window !== "undefined") {
@@ -409,26 +406,6 @@ export default function CostAnalysisPage() {
       window.dispatchEvent(event)
     }
   }
-  
-  useEffect(() => {
-    if (!showNewAnalysis) {
-      setHasShownCalculationToast(false)
-      return
-    }
-    
-    if (showNewAnalysis && estimates.length > 0 && !hasShownCalculationToast) {
-      const bestProvider = estimates.find((e) => e.isMostEconomical)
-      if (bestProvider) {
-        setHasShownCalculationToast(true)
-        const description = `Best option: ${bestProvider.provider.toUpperCase()} - $${bestProvider.yearlyCost.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}/year`
-        toast.success("Calculation completed", {
-          description,
-          duration: 4000,
-        })
-        addNotification("Calculation completed", description, "success")
-      }
-    }
-  }, [estimates, showNewAnalysis, hasShownCalculationToast])
 
   const handleProviderToggle = (provider: string) => {
     setSelectedProviders((prev) =>
@@ -641,7 +618,7 @@ export default function CostAnalysisPage() {
       </div>
 
       {/* Saved Analyses List */}
-      {savedAnalyses.length > 0 ? (
+      {savedAnalyses.length > 0 && !showNewAnalysis ? (
         <Card className="mb-6">
           <CardHeader>
             <CardTitle>Saved Analyses</CardTitle>
