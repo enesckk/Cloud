@@ -1,7 +1,10 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { getEducation, type Education } from "@/lib/api-client"
+import { Loader2 } from "lucide-react"
+import { toast } from "sonner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -38,6 +41,22 @@ import {
 type ContentType = "article" | "video" | "guide" | "case-study"
 type Category = "basics" | "migration" | "providers" | "security" | "cost-optimization" | "best-practices"
 
+// Convert Education from API to EducationContent format
+function educationToContent(edu: Education): EducationContent {
+  return {
+    id: edu.id,
+    title: edu.title,
+    description: edu.description,
+    type: edu.type as ContentType,
+    category: edu.category as Category,
+    duration: edu.duration || undefined,
+    level: edu.level as "beginner" | "intermediate" | "advanced",
+    provider: (edu.provider as any) || "general",
+    tags: edu.tags || [],
+    url: edu.url || undefined,
+  }
+}
+
 interface EducationContent {
   id: string
   title: string
@@ -52,7 +71,8 @@ interface EducationContent {
   completed?: boolean
 }
 
-const educationContent: EducationContent[] = [
+// Fallback static data (will be replaced by database data)
+const staticEducationContent: EducationContent[] = [
   // Cloud Basics
   {
     id: "1",
@@ -269,11 +289,41 @@ const providerColors = {
 
 export default function EducationPage() {
   const router = useRouter()
+  const [educationContent, setEducationContent] = useState<EducationContent[]>([])
+  const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<Category | "all">("all")
   const [selectedType, setSelectedType] = useState<ContentType | "all">("all")
   const [selectedLevel, setSelectedLevel] = useState<"all" | "beginner" | "intermediate" | "advanced">("all")
   const [selectedProvider, setSelectedProvider] = useState<"all" | "aws" | "azure" | "gcp" | "huawei" | "general">("all")
+
+  useEffect(() => {
+    const loadEducation = async () => {
+      try {
+        const response = await getEducation()
+        console.log("Education API response:", response)
+        // Filter only active education and map to content format
+        const activeEducation = response.education.filter((edu) => edu.is_active !== false)
+        const content = activeEducation.map(educationToContent)
+        console.log("Mapped content:", content)
+        // If no content from API, use static data
+        if (content.length === 0) {
+          console.log("No education from API, using static data")
+          setEducationContent(staticEducationContent)
+        } else {
+          setEducationContent(content)
+        }
+      } catch (err: any) {
+        console.error("Failed to load education:", err)
+        // Fallback to static data if API fails
+        setEducationContent(staticEducationContent)
+        toast.error("Failed to load education content. Showing cached data.")
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadEducation()
+  }, [])
 
   const filteredContent = useMemo(() => {
     return educationContent.filter((content) => {
@@ -289,7 +339,7 @@ export default function EducationPage() {
 
       return matchesSearch && matchesCategory && matchesType && matchesLevel && matchesProvider
     })
-  }, [searchQuery, selectedCategory, selectedType, selectedLevel, selectedProvider])
+  }, [educationContent, searchQuery, selectedCategory, selectedType, selectedLevel, selectedProvider])
 
   const clearFilters = () => {
     setSearchQuery("")
@@ -301,44 +351,66 @@ export default function EducationPage() {
 
   const hasActiveFilters = selectedCategory !== "all" || selectedType !== "all" || selectedLevel !== "all" || selectedProvider !== "all" || searchQuery !== ""
 
+  if (loading) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Resources</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{educationContent.length}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Categories</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{Object.keys(categoryInfo).length}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Videos</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {educationContent.filter((c) => c.type === "video").length}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6">
+        <Card className="w-full">
+          <CardContent className="p-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <BookOpen className="h-5 w-5 text-muted-foreground" />
+              <div>
+                <p className="text-sm text-muted-foreground">Total Resources</p>
+                <p className="text-lg font-semibold">{educationContent.length}</p>
+              </div>
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Guides & Articles</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {educationContent.filter((c) => c.type === "article" || c.type === "guide").length}
+        <Card className="w-full">
+          <CardContent className="p-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Layers className="h-5 w-5 text-muted-foreground" />
+              <div>
+                <p className="text-sm text-muted-foreground">Categories</p>
+                <p className="text-lg font-semibold">{Object.keys(categoryInfo).length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="w-full">
+          <CardContent className="p-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Video className="h-5 w-5 text-muted-foreground" />
+              <div>
+                <p className="text-sm text-muted-foreground">Videos</p>
+                <p className="text-lg font-semibold">
+                  {educationContent.filter((c) => c.type === "video").length}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="w-full">
+          <CardContent className="p-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <FileText className="h-5 w-5 text-muted-foreground" />
+              <div>
+                <p className="text-sm text-muted-foreground">Guides & Articles</p>
+                <p className="text-lg font-semibold">
+                  {educationContent.filter((c) => c.type === "article" || c.type === "guide").length}
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>

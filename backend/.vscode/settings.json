@@ -1,0 +1,30 @@
+{
+  "postgresql.connections": [
+    {
+      "host": "localhost",
+      "port": 5433,
+      "database": "cloudguide_db",
+      "user": "cloudguide_user",
+      "password": "cloudguide_pass",
+      "name": "CloudGuide Database"
+    }
+  ],
+  "sqltools.connections": [
+    {
+      "name": "CloudGuide Database",
+      "driver": "PostgreSQL",
+      "server": "localhost",
+      "port": 5433,
+      "database": "cloudguide_db",
+      "username": "cloudguide_user",
+      "password": "cloudguide_pass",
+      "connectionTimeout": 300,
+      "requestTimeout": 300,
+      "previewLimit": 50,
+      "connectionString": "postgresql://cloudguide_user:cloudguide_pass@localhost:5433/cloudguide_db",
+      "pgOptions": {
+        "connect_timeout": 30
+      }
+    }
+  ]
+}

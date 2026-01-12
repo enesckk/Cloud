@@ -50,6 +50,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { getSavedAnalyses, deleteAnalysis, type SavedAnalysis } from "@/lib/reports-storage"
+import { useAuth } from "@/lib/auth-context"
 
 const providerInfo = {
   aws: {
@@ -80,14 +81,24 @@ const providerInfo = {
 
 export default function ReportsPage() {
   const router = useRouter()
+  const { user } = useAuth()
   const [reports, setReports] = useState<SavedAnalysis[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [filterRegion, setFilterRegion] = useState<string>("all")
 
   // Load reports on mount
   useEffect(() => {
-    setReports(getSavedAnalyses())
-  }, [])
+    const loadReports = async () => {
+      if (user?.id) {
+        const analyses = await getSavedAnalyses(user.id)
+        setReports(analyses)
+      } else {
+        // Fallback to localStorage if not logged in
+        setReports(getSavedAnalyses())
+      }
+    }
+    loadReports()
+  }, [user])
 
   const filteredReports = useMemo(() => {
     return reports.filter((report) => {

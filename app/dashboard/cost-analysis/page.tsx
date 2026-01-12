@@ -23,14 +23,18 @@ import {
   type OS,
   type DiskType,
   type Region,
+  type ProviderEstimate,
 } from "@/lib/cloud-pricing"
+import { getProviders, type Provider as ApiProvider } from "@/lib/api-client"
 import {
   getSavedAnalyses,
   saveAnalysis,
   deleteAnalysis,
   type SavedAnalysis,
 } from "@/lib/reports-storage"
-import { RefreshCw, Cloud, CheckCircle2, Info, Plus, Eye, Trash2, Calendar } from "lucide-react"
+import { useAuth } from "@/lib/auth-context"
+import { RefreshCw, Cloud, CheckCircle2, Info, Plus, Eye, Trash2, Calendar, Search, X } from "lucide-react"
+import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
@@ -154,10 +158,15 @@ const regionOptions: Array<{ value: Region; label: string; description: string }
 ]
 
 export default function CostAnalysisPage() {
+  const { user } = useAuth()
   const [showNewAnalysis, setShowNewAnalysis] = useState(false)
   const [savedAnalyses, setSavedAnalyses] = useState<SavedAnalysis[]>([])
   const [selectedAnalysis, setSelectedAnalysis] = useState<SavedAnalysis | null>(null)
   const [analysisTitle, setAnalysisTitle] = useState("")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [filterUseCase, setFilterUseCase] = useState<string>("all")
+  const [filterRegion, setFilterRegion] = useState<string>("all")
+  const [filterProvider, setFilterProvider] = useState<string>("all")
   
   const [vcpu, setVcpu] = useState([4])
   const [ram, setRam] = useState([16])
@@ -167,11 +176,52 @@ export default function CostAnalysisPage() {
   const [diskType, setDiskType] = useState<DiskType>("standard-ssd")
   const [region, setRegion] = useState<Region>("europe")
   const [selectedProviders, setSelectedProviders] = useState<string[]>(["aws", "azure", "gcp"])
+  const [availableProviders, setAvailableProviders] = useState<ApiProvider[]>([])
+
+  // Load providers from database
+  useEffect(() => {
+    const loadProviders = async () => {
+      try {
+        // Load providers using public endpoint (works for all users)
+        try {
+          const response = await getProviders(true) // activeOnly = true
+          const activeProviders = response.providers.filter((p) => p.is_active)
+          setAvailableProviders(activeProviders)
+          // Set initial selected providers to all active providers
+          if (activeProviders.length > 0) {
+            setSelectedProviders(activeProviders.map((p) => p.name))
+          }
+        } catch (error) {
+          console.error("Failed to load providers:", error)
+          // Fallback to default providers
+          setAvailableProviders([])
+        }
+      } catch (error) {
+        console.error("Failed to load providers:", error)
+        setAvailableProviders([])
+      }
+    }
+    loadProviders()
+  }, [user])
 
   // Load saved analyses on mount
   useEffect(() => {
-    setSavedAnalyses(getSavedAnalyses())
-  }, [])
+    const loadAnalyses = async () => {
+      if (user?.id) {
+        try {
+          const analyses = await getSavedAnalyses(user.id)
+          setSavedAnalyses(analyses)
+        } catch (error) {
+          console.error("Failed to load analyses:", error)
+          setSavedAnalyses([])
+        }
+      } else {
+        const localAnalyses = await getSavedAnalyses()
+        setSavedAnalyses(localAnalyses)
+      }
+    }
+    loadAnalyses()
+  }, [user])
 
   // Auto-recommend disk type based on use case
   useEffect(() => {
@@ -184,17 +234,39 @@ export default function CostAnalysisPage() {
   // Filter out unavailable providers when region changes
   useEffect(() => {
     if (showNewAnalysis) {
-      const availableProviders = Object.entries(providerRegions)
-        .filter(([provider, regions]) =>
-          regions.some((r) => r.value === region && r.available),
-        )
-        .map(([provider]) => provider)
+      // Use database providers if available, otherwise fallback to static providerRegions
+      if (availableProviders.length > 0) {
+        const providersForRegion = availableProviders.filter((p) => {
+          if (p.available_regions && p.available_regions.length > 0) {
+            return p.available_regions.includes(region)
+          }
+          // If no available_regions in DB, check static providerRegions
+          const staticRegions = providerRegions[p.name as keyof typeof providerRegions]
+          return staticRegions?.some((r) => r.value === region && r.available) ?? false
+        }).map((p) => p.name)
+        
+        // Only filter if there are providers for this region, otherwise keep all selected
+        if (providersForRegion.length > 0) {
+          setSelectedProviders((prev) =>
+            prev.filter((p) => providersForRegion.includes(p)),
+          )
+        }
+      } else {
+        // Fallback to static providerRegions
+        const staticProviders = Object.entries(providerRegions)
+          .filter(([provider, regions]) =>
+            regions.some((r) => r.value === region && r.available),
+          )
+          .map(([provider]) => provider)
 
-      setSelectedProviders((prev) =>
-        prev.filter((p) => availableProviders.includes(p)),
-      )
+        if (staticProviders.length > 0) {
+          setSelectedProviders((prev) =>
+            prev.filter((p) => staticProviders.includes(p)),
+          )
+        }
+      }
     }
-  }, [region, showNewAnalysis])
+  }, [region, showNewAnalysis, availableProviders])
 
   const config: InfrastructureConfig = useMemo(
     () => ({
@@ -209,12 +281,154 @@ export default function CostAnalysisPage() {
     [vcpu, ram, storage, os, diskType, useCase, region],
   )
 
+  // Calculate costs using database providers
+  const calculateProviderCostsFromDB = (
+    config: InfrastructureConfig,
+    providers: ApiProvider[],
+    selectedProviderNames: string[]
+  ): ProviderEstimate[] => {
+    const { vcpu, ram, storage, os, diskType, useCase, region } = config
+    
+    // Determine OS type for pricing
+    const isWindows = os.startsWith("windows")
+    const osType = isWindows ? "windows" : "linux"
+    
+    // Use case multipliers
+    const useCaseMultipliers: Record<UseCase, number> = {
+      "web-app": 1.0,
+      "general-server": 1.0,
+      database: 1.15,
+      erp: 1.2,
+      "high-traffic": 1.25,
+      "archive-backup": 0.9,
+    }
+    
+    // RAM multiplier
+    const baseRamPerVcpu = 4
+    const ramRatio = ram / vcpu
+    const ramMultiplier = 1 + ((ramRatio - baseRamPerVcpu) / baseRamPerVcpu) * 0.25
+    
+    // Get instance type helper
+    const getInstanceType = (providerName: string, vcpu: number, ram: number) => {
+      if (providerName === "aws") {
+        if (vcpu === 2 && ram === 8) return "t3.medium"
+        if (vcpu === 4 && ram === 16) return "t3.large"
+        if (vcpu === 8 && ram === 32) return "t3.xlarge"
+        return `t3.${vcpu >= 8 ? "xlarge" : vcpu >= 4 ? "large" : "medium"}`
+      }
+      if (providerName === "azure") {
+        if (vcpu === 2 && ram === 4) return "Standard_B2s"
+        if (vcpu === 4 && ram === 8) return "Standard_B2s"
+        if (vcpu === 4 && ram === 16) return "Standard_B4ms"
+        return `Standard_B${vcpu}s`
+      }
+      if (providerName === "gcp") {
+        if (vcpu === 2 && ram === 8) return "e2-standard-2"
+        if (vcpu === 4 && ram === 16) return "e2-standard-2"
+        if (vcpu === 8 && ram === 32) return "e2-standard-4"
+        return `e2-standard-${vcpu}`
+      }
+      if (providerName === "huawei") {
+        if (vcpu === 2 && ram === 8) return "s6.large.2"
+        if (vcpu === 4 && ram === 16) return "s6.xlarge.2"
+        if (vcpu === 8 && ram === 32) return "s6.2xlarge.2"
+        return `s6.${vcpu >= 8 ? "2xlarge" : vcpu >= 4 ? "xlarge" : "large"}.2`
+      }
+      return "custom"
+    }
+    
+    // Calculate monthly cost for a provider
+    const calculateMonthly = (provider: ApiProvider) => {
+      const computeRate = provider.compute_rates?.[osType] || 0
+      const storageRate = provider.storage_rates?.[diskType] || 0
+      const regionMultiplier = provider.region_multipliers?.[region] || 1.0
+      
+      // Compute cost
+      const adjustedMultiplier = Math.max(0.85, Math.min(1.4, ramMultiplier))
+      const useCaseMultiplier = useCaseMultipliers[useCase]
+      const computeCost = vcpu * computeRate * 730 * adjustedMultiplier * useCaseMultiplier * regionMultiplier
+      
+      // Storage cost
+      const storageCost = storage * storageRate * regionMultiplier
+      
+      // Network cost
+      const networkMultiplier = useCase === "high-traffic" ? 0.08 : useCase === "archive-backup" ? 0.02 : 0.04
+      const networkRegionMultiplier = region === "turkey-local" && provider.name === "huawei" ? 0.7 : 1.0
+      const networkCost = computeCost * networkMultiplier * networkRegionMultiplier
+      
+      return Math.round((computeCost + storageCost + networkCost) * 100) / 100
+    }
+    
+    // Calculate estimates for selected providers
+    const estimates: ProviderEstimate[] = providers
+      .filter((p) => p.is_active && selectedProviderNames.includes(p.name))
+      .map((provider) => {
+        const monthlyCost = calculateMonthly(provider)
+        return {
+          provider: provider.name as "aws" | "azure" | "gcp" | "huawei" | string,
+          instanceType: getInstanceType(provider.name, vcpu, ram),
+          monthlyCost,
+          yearlyCost: Math.round(monthlyCost * 12 * 0.95 * 100) / 100,
+          isMostEconomical: false,
+        } as ProviderEstimate
+      })
+    
+    // Find most economical option
+    if (estimates.length > 0) {
+      const mostEconomical = estimates.reduce((min, current) =>
+        current.monthlyCost < min.monthlyCost ? current : min,
+      )
+      mostEconomical.isMostEconomical = true
+    }
+    
+    return estimates
+  }
+
   const estimates = useMemo(() => {
     if (!showNewAnalysis) return []
-    return calculateProviderCosts(config).filter((est) =>
-      selectedProviders.includes(est.provider),
-    )
-  }, [config, selectedProviders, showNewAnalysis])
+    
+    // Use database providers if available, otherwise use static calculation
+    if (availableProviders.length > 0) {
+      return calculateProviderCostsFromDB(config, availableProviders, selectedProviders)
+    } else {
+      return calculateProviderCosts(config).filter((est) =>
+        selectedProviders.includes(est.provider),
+      )
+    }
+  }, [config, selectedProviders, showNewAnalysis, availableProviders])
+
+  // Show notification when calculation is completed (only when form is first opened)
+  const [hasShownCalculationToast, setHasShownCalculationToast] = useState(false)
+  
+  // Helper function to add notification to header (user panel)
+  const addNotification = (title: string, description?: string, type: "success" | "info" | "error" | "warning" = "info") => {
+    if (typeof window !== "undefined") {
+      const event = new CustomEvent("cloudguide:notification", {
+        detail: { type, title, description, target: "user" },
+      })
+      window.dispatchEvent(event)
+    }
+  }
+  
+  useEffect(() => {
+    if (!showNewAnalysis) {
+      setHasShownCalculationToast(false)
+      return
+    }
+    
+    if (showNewAnalysis && estimates.length > 0 && !hasShownCalculationToast) {
+      const bestProvider = estimates.find((e) => e.isMostEconomical)
+      if (bestProvider) {
+        setHasShownCalculationToast(true)
+        const description = `Best option: ${bestProvider.provider.toUpperCase()} - $${bestProvider.yearlyCost.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}/year`
+        toast.success("Calculation completed", {
+          description,
+          duration: 4000,
+        })
+        addNotification("Calculation completed", description, "success")
+      }
+    }
+  }, [estimates, showNewAnalysis, hasShownCalculationToast])
 
   const handleProviderToggle = (provider: string) => {
     setSelectedProviders((prev) =>
@@ -234,57 +448,84 @@ export default function CostAnalysisPage() {
     setAnalysisTitle("")
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!analysisTitle.trim()) {
-      alert("Please enter a title for this analysis")
+      toast.error("Please enter a title for this analysis")
       return
     }
 
-    // Generate trend data (simulated monthly trends)
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"]
-    const avgMonthlyCost = estimates.reduce((sum, e) => sum + e.monthlyCost, 0) / estimates.length
-    const variation = avgMonthlyCost * 0.1 // 10% variation
-    
-    const trends = months.map((month, idx) => ({
-      month,
-      cost: Math.round(avgMonthlyCost + (Math.random() - 0.5) * variation * 2),
-    }))
+    try {
+      // Generate trend data (simulated monthly trends)
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"]
+      const avgMonthlyCost = estimates.reduce((sum, e) => sum + e.monthlyCost, 0) / estimates.length
+      const variation = avgMonthlyCost * 0.1 // 10% variation
+      
+      const trends = months.map((month, idx) => ({
+        month,
+        cost: Math.round(avgMonthlyCost + (Math.random() - 0.5) * variation * 2),
+      }))
 
-    const newAnalysis: SavedAnalysis = {
-      id: `analysis_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      title: analysisTitle,
-      config: {
-        vcpu: vcpu[0],
-        ram: ram[0],
-        storage: storage[0],
-        os,
-        diskType,
-        useCase,
-        region,
-        providers: selectedProviders,
-      },
-      estimates: estimates.map((est) => ({
-        provider: est.provider,
-        instanceType: est.instanceType,
-        monthlyCost: est.monthlyCost,
-        yearlyCost: est.yearlyCost,
-        isMostEconomical: est.isMostEconomical,
-      })),
-      createdAt: new Date().toISOString(),
-      trends,
+      const newAnalysis: SavedAnalysis = {
+        id: `analysis_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        title: analysisTitle,
+        config: {
+          vcpu: vcpu[0],
+          ram: ram[0],
+          storage: storage[0],
+          os,
+          diskType,
+          useCase,
+          region,
+          providers: selectedProviders,
+        },
+        estimates: estimates.map((est) => ({
+          provider: est.provider,
+          instanceType: est.instanceType,
+          monthlyCost: est.monthlyCost,
+          yearlyCost: est.yearlyCost,
+          isMostEconomical: est.isMostEconomical,
+        })),
+        createdAt: new Date().toISOString(),
+        trends,
+      }
+
+      await saveAnalysis(newAnalysis, user?.id)
+      if (user?.id) {
+        const analyses = await getSavedAnalyses(user.id)
+        setSavedAnalyses(analyses)
+      } else {
+        const localAnalyses = await getSavedAnalyses()
+        setSavedAnalyses(localAnalyses)
+      }
+      
+      const bestProvider = estimates.find((e) => e.isMostEconomical)
+      const description = `Analysis "${analysisTitle}" has been saved. Best option: ${bestProvider?.provider.toUpperCase()} - $${(bestProvider?.yearlyCost || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}/year`
+      toast.success("Report created successfully", {
+        description,
+        duration: 5000,
+      })
+      addNotification("Report created successfully", description, "success")
+      
+      setShowNewAnalysis(false)
+      handleReset()
+      setAnalysisTitle("")
+    } catch (error) {
+      toast.error("Failed to save report", {
+        description: "An error occurred while saving your analysis. Please try again.",
+      })
     }
-
-    saveAnalysis(newAnalysis)
-    setSavedAnalyses(getSavedAnalyses())
-    setShowNewAnalysis(false)
-    handleReset()
-    setAnalysisTitle("")
   }
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm("Are you sure you want to delete this analysis?")) {
-      deleteAnalysis(id)
-      setSavedAnalyses(getSavedAnalyses())
+      await deleteAnalysis(id, user?.id)
+      if (user?.id) {
+        const analyses = await getSavedAnalyses(user.id)
+        setSavedAnalyses(analyses)
+      } else {
+        const localAnalyses = await getSavedAnalyses()
+        setSavedAnalyses(localAnalyses)
+      }
     }
   }
 
@@ -329,19 +570,69 @@ export default function CostAnalysisPage() {
     }).format(amount)
   }
 
+  // Filter and search saved analyses
+  const filteredAnalyses = useMemo(() => {
+    let filtered = savedAnalyses
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      filtered = filtered.filter(
+        (analysis) =>
+          analysis.title.toLowerCase().includes(query) ||
+          analysis.config.useCase.toLowerCase().includes(query) ||
+          analysis.config.region.toLowerCase().includes(query) ||
+          analysis.config.providers.some((p) => p.toLowerCase().includes(query))
+      )
+    }
+
+    // Use case filter
+    if (filterUseCase !== "all") {
+      filtered = filtered.filter((analysis) => analysis.config.useCase === filterUseCase)
+    }
+
+    // Region filter
+    if (filterRegion !== "all") {
+      filtered = filtered.filter((analysis) => analysis.config.region === filterRegion)
+    }
+
+    // Provider filter
+    if (filterProvider !== "all") {
+      filtered = filtered.filter((analysis) => analysis.config.providers.includes(filterProvider))
+    }
+
+    return filtered
+  }, [savedAnalyses, searchQuery, filterUseCase, filterRegion, filterProvider])
+
+  const hasActiveFilters = searchQuery.trim() || filterUseCase !== "all" || filterRegion !== "all" || filterProvider !== "all"
+
+  const clearFilters = () => {
+    setSearchQuery("")
+    setFilterUseCase("all")
+    setFilterRegion("all")
+    setFilterProvider("all")
+  }
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="mb-6">
-        <p className="text-muted-foreground text-sm">
-          Select the appropriate infrastructure for your needs and instantly compare the costs of
-          leading cloud providers.
+        <p className="text-muted-foreground">
+          Configure your cloud infrastructure requirements and compare costs across leading cloud providers. 
+          Get instant estimates to make informed decisions for your migration journey.
         </p>
       </div>
 
       {/* Action Bar */}
       <div className="mb-6 flex items-center justify-between">
-        <div className="text-sm text-muted-foreground">
-          {savedAnalyses.length} saved analysis{savedAnalyses.length !== 1 ? "es" : ""}
+        <div className="flex items-center gap-2">
+          <Badge variant="default" className="text-sm font-medium px-3 py-1">
+            Total: {savedAnalyses.length}
+          </Badge>
+          {savedAnalyses.length > 0 && (
+            <Badge variant="secondary" className="text-sm font-medium px-3 py-1">
+              Showing: {filteredAnalyses.length}
+            </Badge>
+          )}
         </div>
         <Button onClick={() => setShowNewAnalysis(true)}>
           <Plus className="h-4 w-4 mr-2" />
@@ -350,15 +641,99 @@ export default function CostAnalysisPage() {
       </div>
 
       {/* Saved Analyses List */}
-      {savedAnalyses.length > 0 && (
+      {savedAnalyses.length > 0 ? (
         <Card className="mb-6">
           <CardHeader>
             <CardTitle>Saved Analyses</CardTitle>
             <CardDescription>Your previously created cost analyses</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {savedAnalyses.map((analysis) => {
+            {/* Search and Filters */}
+            <div className="mb-6 space-y-3">
+              {/* Search */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search by title, use case, region, or provider..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* Filters */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                <Select value={filterUseCase} onValueChange={setFilterUseCase}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filter by use case" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Use Cases</SelectItem>
+                    {useCaseOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={filterRegion} onValueChange={setFilterRegion}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filter by region" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Regions</SelectItem>
+                    {regionOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={filterProvider} onValueChange={setFilterProvider}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filter by provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Providers</SelectItem>
+                    {Object.entries(providerInfo).map(([key, info]) => (
+                      <SelectItem key={key} value={key}>
+                        {info.shortName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {hasActiveFilters && (
+                <Button variant="outline" onClick={clearFilters} className="w-full md:w-auto">
+                  Clear All Filters
+                </Button>
+              )}
+            </div>
+
+            {/* Analyses List */}
+            {filteredAnalyses.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <p>No analyses match your filters</p>
+                {hasActiveFilters && (
+                  <Button variant="outline" onClick={clearFilters} className="mt-4">
+                    Clear Filters
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {filteredAnalyses.map((analysis) => {
                 const bestProvider = analysis.estimates.find((e) => e.isMostEconomical)
                 return (
                   <div
@@ -407,11 +782,28 @@ export default function CostAnalysisPage() {
                     </div>
                   </div>
                 )
-              })}
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : !showNewAnalysis ? (
+        <Card className="mb-6">
+          <CardContent className="py-12">
+            <div className="text-center">
+              <Cloud className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+              <h3 className="text-lg font-semibold mb-2">No saved analyses yet</h3>
+              <p className="text-muted-foreground mb-6">
+                Create your first cost analysis to compare cloud provider costs and make informed decisions
+              </p>
+              <Button onClick={() => setShowNewAnalysis(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Create New Analysis
+              </Button>
             </div>
           </CardContent>
         </Card>
-      )}
+      ) : null}
 
       {/* New Analysis Form */}
       {showNewAnalysis && (
@@ -614,14 +1006,30 @@ export default function CostAnalysisPage() {
                       <div className="space-y-3">
                         <Label>Select Providers</Label>
                         <div className="grid grid-cols-2 gap-3">
-                          {Object.entries(providerInfo).map(([key, info]) => {
-                            const providerKey = key as keyof typeof providerRegions
-                            const isAvailable = providerRegions[providerKey].some(
-                              (r) => r.value === region && r.available,
-                            )
+                          {(availableProviders.length > 0 ? availableProviders : Object.keys(providerInfo).map(name => ({ 
+                            name, 
+                            display_name: providerInfo[name as keyof typeof providerInfo].name, 
+                            short_name: providerInfo[name as keyof typeof providerInfo].shortName, 
+                            available_regions: providerRegions[name as keyof typeof providerRegions]?.filter(r => r.available).map(r => r.value) || [],
+                            is_active: true
+                          } as ApiProvider))).map((provider) => {
+                            const providerName = provider.name
+                            const info = { name: provider.display_name, shortName: provider.short_name }
+                            // Check availability: use database available_regions if available, otherwise fallback to static providerRegions
+                            let isAvailable = false
+                            if (provider.available_regions && provider.available_regions.length > 0) {
+                              isAvailable = provider.available_regions.includes(region)
+                            } else {
+                              // Fallback to static providerRegions
+                              const staticRegions = providerRegions[providerName as keyof typeof providerRegions]
+                              isAvailable = staticRegions?.some((r) => r.value === region && r.available) ?? false
+                            }
+                            // Also check if provider is active
+                            isAvailable = isAvailable && (provider.is_active ?? true)
+                            
                             return (
                               <div
-                                key={key}
+                                key={providerName}
                                 className={`flex items-center space-x-2 rounded-lg border p-3 transition-colors ${
                                   isAvailable
                                     ? "border-border hover:bg-muted/50"
@@ -629,13 +1037,13 @@ export default function CostAnalysisPage() {
                                 }`}
                               >
                                 <Checkbox
-                                  id={key}
-                                  checked={selectedProviders.includes(key)}
-                                  onCheckedChange={() => handleProviderToggle(key)}
+                                  id={providerName}
+                                  checked={selectedProviders.includes(providerName)}
+                                  onCheckedChange={() => handleProviderToggle(providerName)}
                                   disabled={!isAvailable}
                                 />
                                 <Label
-                                  htmlFor={key}
+                                  htmlFor={providerName}
                                   className={`flex-1 cursor-pointer text-sm font-medium ${
                                     !isAvailable ? "cursor-not-allowed" : ""
                                   }`}
@@ -688,7 +1096,10 @@ export default function CostAnalysisPage() {
                           {estimates
                             .sort((a, b) => a.monthlyCost - b.monthlyCost)
                             .map((estimate) => {
-                              const info = providerInfo[estimate.provider as keyof typeof providerInfo]
+                              const dbProvider = availableProviders.find((p) => p.name === estimate.provider)
+                              const info = dbProvider 
+                                ? { name: dbProvider.display_name, shortName: dbProvider.short_name, logo: dbProvider.logo || dbProvider.short_name, color: providerInfo[estimate.provider as keyof typeof providerInfo]?.color || "text-gray-600" }
+                                : providerInfo[estimate.provider as keyof typeof providerInfo] || { name: estimate.provider, shortName: estimate.provider.toUpperCase(), logo: estimate.provider.toUpperCase(), color: "text-gray-600" }
                               return (
                                 <div
                                   key={estimate.provider}
@@ -766,24 +1177,6 @@ export default function CostAnalysisPage() {
         </div>
       )}
 
-      {/* Empty State */}
-      {!showNewAnalysis && savedAnalyses.length === 0 && (
-        <Card>
-          <CardContent className="py-12">
-            <div className="text-center">
-              <Cloud className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-              <h3 className="text-lg font-semibold mb-2">No saved analyses yet</h3>
-              <p className="text-muted-foreground mb-6">
-                Create your first cost analysis to compare cloud provider costs
-              </p>
-              <Button onClick={() => setShowNewAnalysis(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Create New Analysis
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   )
 }

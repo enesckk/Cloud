@@ -99,7 +99,8 @@ export default function ReviewPage() {
     router.push("/estimate")
   }
 
-  const handleRunAnalysis = () => {
+  const handleRunAnalysis = async () => {
+    // Navigate to results - API call will happen there
     router.push("/estimate/results")
   }
 

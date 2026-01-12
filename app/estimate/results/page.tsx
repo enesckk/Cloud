@@ -16,9 +16,12 @@ import {
   BookOpen,
   RotateCcw,
   CheckCircle2,
+  Loader2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { useMemo } from "react"
+import { useMemo, useState, useEffect } from "react"
+import { submitEstimate, type EstimateResponse } from "@/lib/api-client"
+import { mapWizardToBackendRequest } from "@/lib/wizard-mapper"
 
 function CostIndicator({ level }: { level: "low" | "medium" | "high" }) {
   return (
@@ -47,8 +50,75 @@ function CostIndicator({ level }: { level: "low" | "medium" | "high" }) {
 
 export default function ResultsPage() {
   const { data } = useWizard()
+  const [backendResult, setBackendResult] = useState<EstimateResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const results: AnalysisResult = useMemo(() => analyzeData(data), [data])
+  // Try to get estimate from backend, fallback to frontend calculation
+  useEffect(() => {
+    const fetchEstimate = async () => {
+      try {
+        setLoading(true)
+        const requestData = mapWizardToBackendRequest(data)
+        const result = await submitEstimate(requestData)
+        setBackendResult(result)
+      } catch (err) {
+        console.error("Backend API error, using frontend calculation:", err)
+        setError("Backend unavailable, showing frontend estimate")
+        // Continue with frontend calculation as fallback
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchEstimate()
+  }, [data])
+
+  // Transform backend response to frontend AnalysisResult format
+  function transformBackendToFrontend(backend: EstimateResponse): AnalysisResult {
+    const cost = backend.cost_estimate
+    const range = `$${Math.round(cost.min_cost).toLocaleString()} - $${Math.round(cost.max_cost).toLocaleString()}`
+    
+    // Determine cost level
+    let level: "low" | "medium" | "high" = "medium"
+    if (cost.final_cost < 50000) level = "low"
+    else if (cost.final_cost > 200000) level = "high"
+    
+    // Extract factors from breakdown
+    const factors = backend.breakdown
+      .filter((item) => item.impact_direction === "increase")
+      .map((item) => `${item.question_title}: ${item.explanation}`)
+      .slice(0, 5)
+    
+    return {
+      migrationStrategy: "Cloud Migration",
+      strategyDescription: "Based on your requirements, we recommend a phased migration approach.",
+      costEstimate: {
+        level,
+        range,
+        factors,
+      },
+      timelineEstimate: {
+        range: "3-6 months",
+        factors: ["Migration complexity", "Team experience"],
+      },
+      risks: [],
+      recommendations: backend.breakdown.map((item) => item.explanation),
+      considerations: [
+        "This is an estimation based on the information provided.",
+        "Actual costs may vary depending on specific requirements.",
+      ],
+    }
+  }
+
+  // Use backend result if available, otherwise use frontend calculation
+  const results: AnalysisResult = useMemo(() => {
+    if (backendResult) {
+      // Transform backend response to frontend format
+      return transformBackendToFrontend(backendResult)
+    }
+    return analyzeData(data)
+  }, [backendResult, data])
 
   return (
     <div className="flex min-h-screen flex-col">

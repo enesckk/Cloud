@@ -1,6 +1,8 @@
 "use client"
 
-import React, { useState, useMemo } from "react"
+import React, { useState, useMemo, useEffect } from "react"
+import { useAuth } from "@/lib/auth-context"
+import { getProviders, type Provider as ApiProvider } from "@/lib/api-client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -43,7 +45,15 @@ import {
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
-const providerInfo = {
+// Default provider info (fallback)
+const defaultProviderInfo: Record<string, {
+  name: string
+  shortName: string
+  logo: string
+  color: string
+  bgColor: string
+  borderColor: string
+}> = {
   aws: {
     name: "Amazon Web Services",
     shortName: "AWS",
@@ -78,7 +88,7 @@ const providerInfo = {
   },
 }
 
-type Provider = keyof typeof providerInfo
+type Provider = string
 
 interface FeatureComparison {
   category: string
@@ -413,7 +423,8 @@ const featureComparisons: FeatureComparison[] = [
   },
 ]
 
-const regionComparison = {
+// Static region comparison (fallback for providers not in database)
+const staticRegionComparison: Record<string, string[]> = {
   aws: ["Europe", "Middle East", "Asia Pacific", "North America", "Latin America"],
   azure: ["Europe", "Middle East", "Asia Pacific", "North America", "Latin America"],
   gcp: ["Europe", "Middle East", "Asia Pacific", "North America", "Latin America", "Turkey"],
@@ -425,6 +436,19 @@ const regionComparison = {
     "Latin America",
     "Turkey (Istanbul)",
   ],
+}
+
+// Helper function to format region names
+function formatRegionName(region: string): string {
+  const regionMap: Record<string, string> = {
+    "europe": "Europe",
+    "middle-east": "Middle East",
+    "asia-pacific": "Asia Pacific",
+    "north-america": "North America",
+    "latin-america": "Latin America",
+    "turkey-local": "Turkey (Istanbul)",
+  }
+  return regionMap[region.toLowerCase()] || region.charAt(0).toUpperCase() + region.slice(1).replace(/-/g, " ")
 }
 
 const pricingComparison = {
@@ -474,27 +498,73 @@ function getFeatureIcon(value: string | "yes" | "no" | "partial") {
   return <span className="text-sm font-medium">{value}</span>
 }
 
-function getFeatureCount(provider: Provider) {
+function getFeatureCount(provider: Provider, featureComparisons: FeatureComparison[]) {
   let yesCount = 0
   let totalCount = 0
   featureComparisons.forEach((category) => {
     category.features.forEach((feature) => {
       totalCount++
-      if (feature.providers[provider] === "yes") yesCount++
+      const providerKey = provider as keyof typeof feature.providers
+      if (feature.providers[providerKey] === "yes") yesCount++
     })
   })
-  return { yes: yesCount, total: totalCount, percentage: Math.round((yesCount / totalCount) * 100) }
+  return { yes: yesCount, total: totalCount, percentage: totalCount > 0 ? Math.round((yesCount / totalCount) * 100) : 0 }
 }
 
 export default function ComparePage() {
-  const [selectedProviders, setSelectedProviders] = useState<Provider[]>([
-    "aws",
-    "azure",
-    "gcp",
-    "huawei",
-  ])
+  const { user } = useAuth()
+  const [providers, setProviders] = useState<ApiProvider[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selectedProviders, setSelectedProviders] = useState<Provider[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [searchQuery, setSearchQuery] = useState("")
+
+  useEffect(() => {
+    const loadProviders = async () => {
+      try {
+        const response = await getProviders(true) // activeOnly = true
+        const activeProviders = response.providers.filter((p) => p.is_active)
+        setProviders(activeProviders)
+        // Set initial selected providers to all active providers
+        setSelectedProviders(activeProviders.map((p) => p.name))
+      } catch (error) {
+        console.error("Failed to load providers:", error)
+        // Fallback to default providers
+        setSelectedProviders(["aws", "azure", "gcp", "huawei"])
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadProviders()
+  }, [user])
+
+  // Get provider info from database or fallback to default
+  const getProviderInfo = (providerName: string) => {
+    const dbProvider = providers.find((p) => p.name === providerName)
+    if (dbProvider) {
+      return {
+        name: dbProvider.display_name,
+        shortName: dbProvider.short_name,
+        logo: dbProvider.logo || dbProvider.short_name,
+        color: defaultProviderInfo[providerName]?.color || "text-gray-600",
+        bgColor: defaultProviderInfo[providerName]?.bgColor || "bg-gray-50",
+        borderColor: defaultProviderInfo[providerName]?.borderColor || "border-gray-200",
+      }
+    }
+    return defaultProviderInfo[providerName] || {
+      name: providerName,
+      shortName: providerName.toUpperCase(),
+      logo: providerName.toUpperCase(),
+      color: "text-gray-600",
+      bgColor: "bg-gray-50",
+      borderColor: "border-gray-200",
+    }
+  }
+
+  // Get all available providers (from DB or default)
+  const availableProviders = providers.length > 0 
+    ? providers.filter((p) => p.is_active).map((p) => p.name)
+    : Object.keys(defaultProviderInfo)
 
   const handleProviderToggle = (provider: Provider) => {
     setSelectedProviders((prev) =>
@@ -502,8 +572,70 @@ export default function ComparePage() {
     )
   }
 
+  // Build featureComparisons from database providers
+  const dynamicFeatureComparisons = useMemo(() => {
+    // Get all unique features from all providers
+    const allFeatures = new Set<string>()
+    providers.forEach((provider) => {
+      if (provider.features) {
+        Object.keys(provider.features).forEach((feature) => allFeatures.add(feature))
+      }
+    })
+
+    // If no features in DB, use static featureComparisons
+    if (allFeatures.size === 0) {
+      return featureComparisons
+    }
+
+    // Map features to categories (using static featureComparisons as template)
+    const categoryMap: Record<string, { icon: React.ReactNode; features: string[] }> = {
+      "Compute & Infrastructure": { icon: <Server className="h-4 w-4" />, features: [] },
+      "Storage & Database": { icon: <BarChart3 className="h-4 w-4" />, features: [] },
+      "Security & Compliance": { icon: <Shield className="h-4 w-4" />, features: [] },
+      "Networking & CDN": { icon: <Globe className="h-4 w-4" />, features: [] },
+      "Support & Services": { icon: <HeadphonesIcon className="h-4 w-4" />, features: [] },
+    }
+
+    // Categorize features based on static featureComparisons
+    featureComparisons.forEach((cat) => {
+      cat.features.forEach((feature) => {
+        if (allFeatures.has(feature.name)) {
+          categoryMap[cat.category].features.push(feature.name)
+        }
+      })
+    })
+
+    // Build dynamic featureComparisons
+    return Object.entries(categoryMap)
+      .filter(([_, data]) => data.features.length > 0)
+      .map(([category, data]) => ({
+        category,
+        icon: data.icon,
+        features: data.features.map((featureName) => {
+          // Get feature value for each provider
+          const providerFeatures: Record<string, "yes" | "no" | "partial" | string> = {}
+          providers.forEach((p) => {
+            const featureValue = p.features?.[featureName]
+            providerFeatures[p.name] = (featureValue as "yes" | "no" | "partial" | string) || "no"
+          })
+
+          // Get description from static featureComparisons if available
+          const staticFeature = featureComparisons
+            .find((cat) => cat.category === category)
+            ?.features.find((f) => f.name === featureName)
+
+          return {
+            name: featureName,
+            description: staticFeature?.description,
+            providers: providerFeatures,
+          }
+        }),
+      }))
+  }, [providers])
+
   const filteredCategories = useMemo(() => {
-    let filtered = selectedCategory === "all" ? featureComparisons : featureComparisons.filter((cat) => cat.category === selectedCategory)
+    const comparisons = dynamicFeatureComparisons.length > 0 ? dynamicFeatureComparisons : featureComparisons
+    let filtered = selectedCategory === "all" ? comparisons : comparisons.filter((cat) => cat.category === selectedCategory)
 
     if (searchQuery) {
       filtered = filtered.map((category) => ({
@@ -517,9 +649,33 @@ export default function ComparePage() {
     }
 
     return filtered
-  }, [selectedCategory, searchQuery])
+  }, [selectedCategory, searchQuery, dynamicFeatureComparisons])
 
-  const categories = ["all", ...featureComparisons.map((cat) => cat.category)]
+  const categories = useMemo(() => {
+    const comparisons = dynamicFeatureComparisons.length > 0 ? dynamicFeatureComparisons : featureComparisons
+    return ["all", ...comparisons.map((cat) => cat.category)]
+  }, [dynamicFeatureComparisons])
+
+  // Dynamic region comparison from database
+  const regionComparison = useMemo(() => {
+    const dynamic: Record<string, string[]> = {}
+    
+    // Build from database providers
+    providers.forEach((provider) => {
+      if (provider.available_regions && provider.available_regions.length > 0) {
+        dynamic[provider.name] = provider.available_regions.map(formatRegionName)
+      }
+    })
+    
+    // Merge with static data for providers not in database
+    Object.keys(staticRegionComparison).forEach((providerName) => {
+      if (!dynamic[providerName]) {
+        dynamic[providerName] = staticRegionComparison[providerName]
+      }
+    })
+    
+    return dynamic
+  }, [providers])
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -539,14 +695,19 @@ export default function ComparePage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {Object.entries(providerInfo).map(([key, info]) => {
-              const provider = key as Provider
-              const isSelected = selectedProviders.includes(provider)
-              const stats = getFeatureCount(provider)
-              return (
+          {loading ? (
+            <div className="text-center py-8">Loading providers...</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {availableProviders.map((providerName) => {
+                const provider = providerName as Provider
+                const info = getProviderInfo(providerName)
+                const isSelected = selectedProviders.includes(provider)
+                const comparisons = dynamicFeatureComparisons.length > 0 ? dynamicFeatureComparisons : featureComparisons
+                const stats = getFeatureCount(provider, comparisons)
+                return (
                 <div
-                  key={key}
+                  key={providerName}
                   onClick={() => handleProviderToggle(provider)}
                   className={`relative rounded-xl border-2 p-5 cursor-pointer transition-all hover:shadow-lg ${
                     isSelected
@@ -591,9 +752,10 @@ export default function ComparePage() {
                     </div>
                   </div>
                 </div>
-              )
-            })}
-          </div>
+                )
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -713,16 +875,19 @@ export default function ComparePage() {
                           <TableHead className="w-[300px] sticky left-0 bg-background z-10">
                             Feature
                           </TableHead>
-                          {selectedProviders.map((provider) => (
-                            <TableHead key={provider} className="text-center min-w-[140px]">
-                              <div className={`font-bold text-base ${providerInfo[provider].color}`}>
-                                {providerInfo[provider].shortName}
-                              </div>
-                              <div className="text-xs text-muted-foreground font-normal mt-1">
-                                {providerInfo[provider].name}
-                              </div>
-                            </TableHead>
-                          ))}
+                          {selectedProviders.map((provider) => {
+                            const info = getProviderInfo(provider)
+                            return (
+                              <TableHead key={provider} className="text-center min-w-[140px]">
+                                <div className={`font-bold text-base ${info.color}`}>
+                                  {info.shortName}
+                                </div>
+                                <div className="text-xs text-muted-foreground font-normal mt-1">
+                                  {info.name}
+                                </div>
+                              </TableHead>
+                            )
+                          })}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -770,29 +935,36 @@ export default function ComparePage() {
 
               <TabsContent value="regions" className="mt-6">
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                  {selectedProviders.map((provider) => (
+                  {selectedProviders.map((provider) => {
+                    const info = getProviderInfo(provider)
+                    return (
                     <Card
                       key={provider}
-                      className={`${providerInfo[provider].bgColor} border-2 ${providerInfo[provider].borderColor}`}
+                      className={`${info.bgColor} border-2 ${info.borderColor}`}
                     >
                       <CardHeader>
-                        <CardTitle className={`text-lg ${providerInfo[provider].color}`}>
-                          {providerInfo[provider].name}
+                        <CardTitle className={`text-lg ${info.color}`}>
+                          {info.name}
                         </CardTitle>
                         <CardDescription>Available Regions</CardDescription>
                       </CardHeader>
                       <CardContent>
                         <ul className="space-y-2.5">
-                          {regionComparison[provider].map((region) => (
-                            <li key={region} className="flex items-center gap-2.5 text-sm">
-                              <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
-                              <span>{region}</span>
-                            </li>
-                          ))}
+                          {(regionComparison[provider] || []).length > 0 ? (
+                            (regionComparison[provider] || []).map((region: string) => (
+                              <li key={region} className="flex items-center gap-2.5 text-sm">
+                                <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                                <span>{region}</span>
+                              </li>
+                            ))
+                          ) : (
+                            <li className="text-sm text-muted-foreground">No regions available</li>
+                          )}
                         </ul>
                       </CardContent>
                     </Card>
-                  ))}
+                    )
+                  })}
                 </div>
               </TabsContent>
 
@@ -806,15 +978,16 @@ export default function ComparePage() {
                     </h3>
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                       {selectedProviders.map((provider) => {
-                        const pricing = pricingComparison[provider]
+                        const pricing = pricingComparison[provider as keyof typeof pricingComparison] || { rating: 3, note: "Competitive pricing", strength: "Cloud provider" }
+                        const info = getProviderInfo(provider)
                         return (
                           <Card key={provider} className="relative overflow-hidden">
                             <div
-                              className={`absolute top-0 right-0 w-20 h-20 ${providerInfo[provider].bgColor} rounded-bl-full opacity-50`}
+                              className={`absolute top-0 right-0 w-20 h-20 ${info.bgColor} rounded-bl-full opacity-50`}
                             />
                             <CardHeader>
-                              <CardTitle className={`text-base ${providerInfo[provider].color} relative z-10`}>
-                                {providerInfo[provider].shortName}
+                              <CardTitle className={`text-base ${info.color} relative z-10`}>
+                                {info.shortName}
                               </CardTitle>
                             </CardHeader>
                             <CardContent className="relative z-10">
@@ -862,16 +1035,18 @@ export default function ComparePage() {
                       Key Strengths
                     </h3>
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                      {selectedProviders.map((provider) => (
-                        <Card key={provider} className={providerInfo[provider].bgColor}>
+                      {selectedProviders.map((provider) => {
+                        const info = getProviderInfo(provider)
+                        return (
+                        <Card key={provider} className={info.bgColor}>
                           <CardHeader>
-                            <CardTitle className={`text-base ${providerInfo[provider].color}`}>
-                              {providerInfo[provider].shortName}
+                            <CardTitle className={`text-base ${info.color}`}>
+                              {info.shortName}
                             </CardTitle>
                           </CardHeader>
                           <CardContent>
                             <ul className="space-y-2">
-                              {providerStrengths[provider].map((strength, idx) => (
+                              {(providerStrengths[provider as keyof typeof providerStrengths] || ["Cloud services", "Scalable infrastructure", "Global presence"]).map((strength, idx) => (
                                 <li key={idx} className="flex items-start gap-2 text-sm">
                                   <Sparkles className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                                   <span>{strength}</span>
@@ -880,7 +1055,8 @@ export default function ComparePage() {
                             </ul>
                           </CardContent>
                         </Card>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
 

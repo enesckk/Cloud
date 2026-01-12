@@ -5,8 +5,9 @@ import { useRouter, useParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Download, FileSpreadsheet, FileDown, Lightbulb, CheckCircle2, TrendingUp, BarChart3 } from "lucide-react"
+import { ArrowLeft, Download, FileDown, Lightbulb, CheckCircle2, TrendingUp, BarChart3 } from "lucide-react"
 import { getAnalysisById, type SavedAnalysis } from "@/lib/reports-storage"
+import { useAuth } from "@/lib/auth-context"
 import {
   ChartContainer,
   ChartTooltip,
@@ -45,16 +46,25 @@ const providerInfo = {
 export default function ReportDetailPage() {
   const router = useRouter()
   const params = useParams()
+  const { user } = useAuth()
   const [report, setReport] = useState<SavedAnalysis | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const id = params.id as string
-    const foundReport = getAnalysisById(id)
-    if (foundReport) {
-      setReport(foundReport)
+    const loadReport = async () => {
+      try {
+        const id = params.id as string
+        const foundReport = await getAnalysisById(id)
+        if (foundReport) {
+          setReport(foundReport)
+        }
+      } catch (error) {
+        console.error("Failed to load report:", error)
+      } finally {
+        setLoading(false)
+      }
     }
-    setLoading(false)
+    loadReport()
   }, [params.id])
 
   const formatDate = (dateString: string) => {
@@ -95,8 +105,310 @@ export default function ReportDetailPage() {
 
   const handleExportPDF = () => {
     if (!report) return
-    console.log("Exporting PDF for report:", report.id)
-    alert(`PDF export for "${report.title}" would be generated here.`)
+    
+    const savings = calculateSavings(report)
+    const sortedEstimates = [...report.estimates].sort((a, b) => a.yearlyCost - b.yearlyCost)
+    
+    // Build HTML content from report data
+    const buildProviderHTML = (estimate: typeof report.estimates[0]) => {
+      const info = providerInfo[estimate.provider as keyof typeof providerInfo] || {
+        name: estimate.provider,
+        shortName: estimate.provider.toUpperCase(),
+      }
+      const economical = estimate.isMostEconomical ? 'economical' : ''
+      const borderStyle = estimate.isMostEconomical ? 'border: 2px solid #22c55e;' : 'border: 1px solid #000;'
+      
+      return `
+        <div class="provider-card ${economical}" style="${borderStyle} margin-bottom: 15px; padding: 12px; page-break-inside: avoid;">
+          ${estimate.isMostEconomical ? '<span class="badge">Most Economical</span>' : ''}
+          <h3 style="font-size: 14px; margin: 10px 0 5px 0;">${info.name}</h3>
+          <p style="font-size: 11px; margin: 5px 0;">Recommended Instance: <strong>${estimate.instanceType}</strong></p>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 10px;">
+            <div>
+              <p style="font-size: 10px; color: #666; margin-bottom: 5px;">Monthly Estimate</p>
+              <p style="font-size: 18px; font-weight: bold; color: ${estimate.isMostEconomical ? '#22c55e' : '#000'};">${formatCurrency(estimate.monthlyCost)}</p>
+            </div>
+            <div>
+              <p style="font-size: 10px; color: #666; margin-bottom: 5px;">Yearly Estimate</p>
+              <p style="font-size: 18px; font-weight: bold;">${formatCurrency(estimate.yearlyCost)}</p>
+            </div>
+          </div>
+        </div>
+      `
+    }
+    
+    const configHTML = `
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-top: 10px;">
+        <div>
+          <div style="font-size: 10px; color: #666; margin-bottom: 5px;">Virtual CPU</div>
+          <div style="font-size: 18px; font-weight: bold;">${report.config.vcpu}</div>
+        </div>
+        <div>
+          <div style="font-size: 10px; color: #666; margin-bottom: 5px;">Memory (RAM)</div>
+          <div style="font-size: 18px; font-weight: bold;">${report.config.ram} GB</div>
+        </div>
+        <div>
+          <div style="font-size: 10px; color: #666; margin-bottom: 5px;">Storage</div>
+          <div style="font-size: 18px; font-weight: bold;">${report.config.storage} GB</div>
+        </div>
+        <div>
+          <div style="font-size: 10px; color: #666; margin-bottom: 5px;">Region</div>
+          <div style="font-size: 18px; font-weight: bold;">${report.config.region}</div>
+        </div>
+        <div>
+          <div style="font-size: 10px; color: #666; margin-bottom: 5px;">Operating System</div>
+          <div style="font-size: 14px; font-weight: bold;">${report.config.os}</div>
+        </div>
+        <div>
+          <div style="font-size: 10px; color: #666; margin-bottom: 5px;">Disk Type</div>
+          <div style="font-size: 14px; font-weight: bold;">${report.config.diskType}</div>
+        </div>
+        <div>
+          <div style="font-size: 10px; color: #666; margin-bottom: 5px;">Use Case</div>
+          <div style="font-size: 14px; font-weight: bold;">${report.config.useCase}</div>
+        </div>
+        <div>
+          <div style="font-size: 10px; color: #666; margin-bottom: 5px;">Providers</div>
+          <div style="font-size: 12px;">${report.config.providers.map(p => p.toUpperCase()).join(', ')}</div>
+        </div>
+      </div>
+    `
+    
+    const savingsHTML = savings ? `
+      <div style="background: #e0f2fe; border: 2px solid #0284c7; padding: 15px; margin-top: 15px; page-break-inside: avoid;">
+        <h3 style="font-size: 16px; margin-bottom: 10px;">Potential Annual Savings</h3>
+        <p style="font-size: 24px; font-weight: bold; color: #0284c7; margin: 10px 0;">${formatCurrency(savings.amount)}</p>
+        <p style="font-size: 12px; margin-top: 10px;">
+          By choosing <strong>${savings.bestProvider?.toUpperCase()}</strong> instead of the most expensive option, 
+          you could save <strong>${savings.percent}%</strong> annually on your cloud infrastructure costs.
+        </p>
+      </div>
+    ` : ''
+    
+    // Create a new window with clean HTML
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) return
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${report.title} - Report</title>
+          <meta charset="UTF-8">
+          <style>
+            @page {
+              size: A4 portrait;
+              margin: 15mm;
+            }
+            
+            * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+            }
+            
+            html, body {
+              margin: 0;
+              padding: 0;
+              width: 100%;
+              height: auto;
+              overflow: visible;
+            }
+            
+            body {
+              font-family: Arial, sans-serif;
+              font-size: 11px;
+              line-height: 1.4;
+              color: #000;
+              background: white;
+              padding: 0;
+              margin: 0;
+            }
+            
+            .report-header {
+              margin-bottom: 20px;
+              padding-bottom: 15px;
+              border-bottom: 2px solid #000;
+              page-break-after: avoid;
+            }
+            
+            .report-header h1 {
+              font-size: 22px;
+              margin-bottom: 5px;
+              font-weight: bold;
+            }
+            
+            .report-header p {
+              font-size: 11px;
+              color: #666;
+            }
+            
+            .card {
+              border: 1px solid #000;
+              margin-bottom: 15px;
+              padding: 12px;
+              page-break-inside: avoid;
+              page-break-after: auto;
+            }
+            
+            .card-header {
+              font-weight: bold;
+              font-size: 16px;
+              margin-bottom: 10px;
+              padding-bottom: 8px;
+              border-bottom: 1px solid #ccc;
+              page-break-after: avoid;
+            }
+            
+            .card-description {
+              font-size: 11px;
+              color: #666;
+              margin-bottom: 10px;
+            }
+            
+            .card-content {
+              font-size: 11px;
+            }
+            
+            h2 {
+              font-size: 18px;
+              margin: 15px 0 10px 0;
+              font-weight: bold;
+            }
+            
+            h3 {
+              font-size: 14px;
+              margin: 10px 0 5px 0;
+              font-weight: bold;
+            }
+            
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin: 10px 0;
+              font-size: 10px;
+              page-break-inside: avoid;
+            }
+            
+            th, td {
+              border: 1px solid #000;
+              padding: 6px;
+              text-align: left;
+            }
+            
+            th {
+              background-color: #f0f0f0;
+              font-weight: bold;
+            }
+            
+            .provider-card {
+              border: 1px solid #000;
+              margin-bottom: 15px;
+              padding: 12px;
+              page-break-inside: avoid;
+            }
+            
+            .provider-card.economical {
+              border: 2px solid #22c55e;
+              background-color: #f0fdf4;
+            }
+            
+            .badge {
+              display: inline-block;
+              padding: 4px 10px;
+              background: #22c55e;
+              color: white;
+              font-size: 10px;
+              border-radius: 3px;
+              margin-bottom: 10px;
+              font-weight: bold;
+            }
+            
+            @media print {
+              body {
+                margin: 0;
+                padding: 0;
+              }
+              
+              .card {
+                page-break-inside: avoid;
+              }
+              
+              h2, h3 {
+                page-break-after: avoid;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="report-header">
+            <h1>${report.title}</h1>
+            <p>Created on: ${formatDate(report.createdAt)}</p>
+          </div>
+          
+          <div class="card">
+            <div class="card-header">Configuration</div>
+            <div class="card-description">Infrastructure configuration details</div>
+            <div class="card-content">
+              ${configHTML}
+            </div>
+          </div>
+          
+          <div class="card">
+            <div class="card-header">Provider Cost Breakdown</div>
+            <div class="card-description">Detailed cost comparison across selected providers</div>
+            <div class="card-content">
+              ${sortedEstimates.map(buildProviderHTML).join('')}
+            </div>
+          </div>
+          
+          ${savings ? `
+          <div class="card">
+            <div class="card-header">Savings Opportunities</div>
+            <div class="card-description">Potential cost savings by choosing the optimal provider</div>
+            <div class="card-content">
+              ${savingsHTML}
+            </div>
+          </div>
+          ` : ''}
+          
+          <div class="card">
+            <div class="card-header">Cost Summary Table</div>
+            <div class="card-content">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Provider</th>
+                    <th>Instance Type</th>
+                    <th>Monthly Cost</th>
+                    <th>Yearly Cost</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${sortedEstimates.map(est => `
+                    <tr ${est.isMostEconomical ? 'style="background-color: #f0fdf4;"' : ''}>
+                      <td><strong>${(providerInfo[est.provider as keyof typeof providerInfo]?.name || est.provider)}</strong></td>
+                      <td>${est.instanceType}</td>
+                      <td>${formatCurrency(est.monthlyCost)}</td>
+                      <td><strong>${formatCurrency(est.yearlyCost)}</strong></td>
+                      <td>${est.isMostEconomical ? '<strong style="color: #22c55e;">Most Economical</strong>' : '-'}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </body>
+      </html>
+    `)
+    
+    printWindow.document.close()
+    
+    // Wait for content to load then print
+    setTimeout(() => {
+      printWindow.print()
+    }, 500)
   }
 
   if (loading) {
@@ -179,10 +491,201 @@ export default function ReportDetailPage() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <>
+      <style jsx global>{`
+        @media print {
+          @page {
+            size: A4 landscape;
+            margin: 10mm;
+          }
+          
+          /* Hide sidebar, header, navigation, buttons */
+          aside,
+          header,
+          nav,
+          button,
+          .no-print,
+          .sidebar,
+          .panel-header,
+          [class*="sidebar"],
+          [class*="header"] {
+            display: none !important;
+          }
+          
+          /* Reset body and html */
+          html,
+          body {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            font-size: 12px !important;
+          }
+          
+          main {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+          }
+          
+          /* Print content layout */
+          .print-content {
+            display: block !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            box-sizing: border-box !important;
+          }
+          
+          /* Cards with page break control */
+          .print-content .card,
+          .print-content [class*="Card"] {
+            box-shadow: none !important;
+            border: 1px solid #000 !important;
+            margin: 5mm 0 !important;
+            padding: 3mm !important;
+            page-break-inside: avoid;
+            page-break-after: auto;
+            background: white !important;
+          }
+          
+          [class*="CardHeader"] {
+            padding: 2mm !important;
+            margin-bottom: 2mm !important;
+            border-bottom: 1px solid #ccc !important;
+            page-break-after: avoid;
+          }
+          
+          [class*="CardContent"] {
+            padding: 2mm !important;
+          }
+          
+          /* Normal text sizes */
+          .print-content h1 { 
+            font-size: 18px !important; 
+            margin: 2mm 0 !important; 
+            font-weight: bold !important;
+            line-height: 1.3 !important;
+            page-break-after: avoid;
+          }
+          .print-content h2 { 
+            font-size: 16px !important; 
+            margin: 2mm 0 !important; 
+            font-weight: bold !important;
+            line-height: 1.3 !important;
+            page-break-after: avoid;
+          }
+          .print-content h3 { 
+            font-size: 14px !important; 
+            margin: 1.5mm 0 !important; 
+            font-weight: bold !important;
+            line-height: 1.3 !important;
+            page-break-after: avoid;
+          }
+          .print-content p, 
+          .print-content span, 
+          .print-content div, 
+          .print-content li { 
+            font-size: 11px !important; 
+            line-height: 1.4 !important; 
+            margin: 1mm 0 !important;
+          }
+          
+          /* Tables */
+          .print-content table {
+            width: 100% !important;
+            font-size: 10px !important;
+            border-collapse: collapse !important;
+            page-break-inside: avoid;
+          }
+          
+          .print-content th,
+          .print-content td {
+            padding: 2mm !important;
+            border: 1px solid #ccc !important;
+          }
+          
+          /* Charts - normal size */
+          .print-content svg,
+          .print-content canvas {
+            display: block !important;
+            visibility: visible !important;
+            width: 100% !important;
+            height: auto !important;
+            max-width: 100% !important;
+          }
+          
+          .print-content [class*="recharts"] {
+            display: block !important;
+            visibility: visible !important;
+            width: 100% !important;
+            height: auto !important;
+          }
+          
+          .print-content [class*="ChartContainer"],
+          .print-content [class*="chart-container"] {
+            width: 100% !important;
+            height: 200px !important;
+            min-height: 200px !important;
+            max-height: 250px !important;
+            page-break-inside: avoid;
+          }
+          
+          .print-content .recharts-wrapper {
+            width: 100% !important;
+            height: 200px !important;
+          }
+          
+          .print-content .recharts-surface {
+            width: 100% !important;
+            height: 200px !important;
+          }
+          
+          /* Normal spacing */
+          .print-content .space-y-6 > * + * { margin-top: 4mm !important; }
+          .print-content .space-y-4 > * + * { margin-top: 3mm !important; }
+          .print-content .gap-6 { gap: 3mm !important; }
+          .print-content .gap-4 { gap: 2mm !important; }
+          .print-content .mb-6 { margin-bottom: 4mm !important; }
+          .print-content .mb-4 { margin-bottom: 3mm !important; }
+          .print-content .mb-2 { margin-bottom: 2mm !important; }
+          .print-content .mt-4 { margin-top: 3mm !important; }
+          .print-content .mt-2 { margin-top: 2mm !important; }
+          
+          /* Badges */
+          .print-content [class*="Badge"] {
+            font-size: 9px !important;
+            padding: 1mm 2mm !important;
+            border: 1px solid #000 !important;
+          }
+          
+          /* Provider cards */
+          .print-content [class*="rounded-xl"] {
+            padding: 3mm !important;
+            margin: 2mm 0 !important;
+            page-break-inside: avoid;
+          }
+          
+          .print-content .grid {
+            gap: 2mm !important;
+          }
+          
+          /* Ensure everything fits and can break pages */
+          .print-content * {
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+          }
+          
+          /* Allow page breaks between major sections */
+          .print-content > div {
+            page-break-inside: auto;
+          }
+        }
+      `}</style>
+      <div className="p-6 max-w-7xl mx-auto print-container print-content">
       {/* Header with Back Button */}
       <div className="mb-6">
-        <Button variant="ghost" onClick={() => router.push("/dashboard/reports")} className="mb-4">
+        <Button variant="ghost" onClick={() => router.push("/dashboard/reports")} className="mb-4 no-print">
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Reports
         </Button>
@@ -193,14 +696,10 @@ export default function ReportDetailPage() {
               Created on {formatDate(report.createdAt)}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 no-print">
             <Button variant="outline" onClick={handleExportPDF}>
               <FileDown className="h-4 w-4 mr-2" />
               Export PDF
-            </Button>
-            <Button variant="outline">
-              <FileSpreadsheet className="h-4 w-4 mr-2" />
-              Export Excel
             </Button>
           </div>
         </div>
@@ -270,7 +769,12 @@ export default function ReportDetailPage() {
               {report.estimates
                 .sort((a, b) => a.yearlyCost - b.yearlyCost)
                 .map((estimate) => {
-                  const info = providerInfo[estimate.provider as keyof typeof providerInfo]
+                  const info = providerInfo[estimate.provider as keyof typeof providerInfo] || {
+                    name: estimate.provider,
+                    shortName: estimate.provider.toUpperCase(),
+                    logo: estimate.provider.toUpperCase(),
+                    color: "text-gray-600",
+                  }
                   return (
                     <div
                       key={estimate.provider}
@@ -294,9 +798,9 @@ export default function ReportDetailPage() {
                         <div
                           className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-background border-2 ${
                             estimate.isMostEconomical ? "border-green-500" : "border-border"
-                          } text-2xl font-bold ${info.color}`}
+                          } text-2xl font-bold ${info.color || "text-gray-600"}`}
                         >
-                          {info.logo}
+                          {info.logo || estimate.provider.toUpperCase()}
                         </div>
 
                         <div className="flex-1">
@@ -494,6 +998,7 @@ export default function ReportDetailPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+      </div>
+    </>
   )
 }

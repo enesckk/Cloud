@@ -2,156 +2,125 @@
 
 import type React from "react"
 import { createContext, useContext, useState, useEffect } from "react"
+import {
+  registerUser,
+  loginUser,
+  getUserProfile,
+  updateUserProfile,
+  updateUserPassword,
+  type User as ApiUser,
+  ApiError,
+} from "./api-client"
 
 export interface User {
   id: string
   email: string
   name: string
   title?: string
+  is_admin?: boolean
   createdAt: string
 }
 
 interface AuthContextType {
   user: User | null
-  login: (email: string, password: string) => Promise<boolean>
-  signup: (name: string, email: string, password: string) => Promise<boolean>
+  login: (email: string, password: string) => Promise<User | null>
+  signup: (name: string, email: string, password: string, title?: string) => Promise<boolean>
   logout: () => void
   updateUser: (updates: { name?: string; email?: string; title?: string }) => Promise<boolean>
   updatePassword: (currentPassword: string, newPassword: string) => Promise<boolean>
   isLoading: boolean
+  error: string | null
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 const STORAGE_KEY = "cloudguide_user"
-const USERS_STORAGE_KEY = "cloudguide_users"
 
-// Mock users storage - in real app this would be backend
-function getStoredUsers(): Array<{ email: string; password: string; name: string; title?: string; id: string; createdAt: string }> {
-  if (typeof window === "undefined") return []
-  const stored = localStorage.getItem(USERS_STORAGE_KEY)
-  const users = stored ? JSON.parse(stored) : []
-  
-  // Initialize demo user if no users exist
-  if (users.length === 0) {
-    const demoUser = {
-      id: "demo_user_001",
-      email: "demo@cloudguide.com",
-      password: "demo123",
-      name: "Demo Kullanıcı",
-      title: "IT Manager",
-      createdAt: new Date().toISOString(),
-    }
-    users.push(demoUser)
-    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users))
+// Helper to convert API user to local User format
+function apiUserToLocal(apiUser: ApiUser): User {
+  return {
+    id: apiUser.id,
+    email: apiUser.email,
+    name: apiUser.name,
+    title: apiUser.title,
+    is_admin: (apiUser as any).is_admin || false,
+    createdAt: apiUser.created_at || new Date().toISOString(),
   }
-  
-  return users
-}
-
-function saveUser(user: { email: string; password: string; name: string; title?: string; id: string; createdAt: string }) {
-  if (typeof window === "undefined") return
-  const users = getStoredUsers()
-  users.push(user)
-  localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users))
-}
-
-function updateStoredUser(userId: string, updates: { email?: string; password?: string; name?: string; title?: string }) {
-  if (typeof window === "undefined") return false
-  const users = getStoredUsers()
-  const userIndex = users.findIndex((u) => u.id === userId)
-  
-  if (userIndex === -1) return false
-  
-  if (updates.email) users[userIndex].email = updates.email
-  if (updates.password) users[userIndex].password = updates.password
-  if (updates.name) users[userIndex].name = updates.name
-  if (updates.title !== undefined) users[userIndex].title = updates.title
-  
-  localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users))
-  return true
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     // Check if user is logged in on mount
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored) {
-        try {
-          setUser(JSON.parse(stored))
-        } catch {
-          localStorage.removeItem(STORAGE_KEY)
+    const loadUser = async () => {
+      if (typeof window !== "undefined") {
+        const stored = localStorage.getItem(STORAGE_KEY)
+        if (stored) {
+          try {
+            const userData = JSON.parse(stored)
+            // Try to refresh user data from backend
+            try {
+              const freshUser = await getUserProfile(userData.id)
+              const localUser = apiUserToLocal(freshUser)
+              setUser(localUser)
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(localUser))
+            } catch {
+              // If backend fails, use stored data
+              setUser(userData)
+            }
+          } catch {
+            localStorage.removeItem(STORAGE_KEY)
+          }
         }
       }
+      setIsLoading(false)
     }
-    setIsLoading(false)
+    loadUser()
   }, [])
 
-  const login = async (email: string, password: string): Promise<boolean> => {
-    // Simulate API call delay
-    await new Promise((resolve) => setTimeout(resolve, 500))
-
-    const users = getStoredUsers()
-    const foundUser = users.find((u) => u.email === email && u.password === password)
-
-    if (foundUser) {
-      const userData: User = {
-        id: foundUser.id,
-        email: foundUser.email,
-        name: foundUser.name,
-        title: foundUser.title,
-        createdAt: foundUser.createdAt,
-      }
-      setUser(userData)
+  const login = async (email: string, password: string): Promise<User | null> => {
+    try {
+      setError(null)
+      const response = await loginUser({ email, password })
+      const localUser = apiUserToLocal(response.user)
+      
+      setUser(localUser)
       if (typeof window !== "undefined") {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(userData))
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(localUser))
       }
-      return true
+      return localUser
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message)
+      } else {
+        setError("Login failed. Please try again.")
+      }
+      return null
     }
-
-    return false
   }
 
   const signup = async (name: string, email: string, password: string, title?: string): Promise<boolean> => {
-    // Simulate API call delay
-    await new Promise((resolve) => setTimeout(resolve, 500))
-
-    const users = getStoredUsers()
-
-    // Check if email already exists
-    if (users.some((u) => u.email === email)) {
+    try {
+      setError(null)
+      const response = await registerUser({ name, email, password, title })
+      const localUser = apiUserToLocal(response.user)
+      
+      setUser(localUser)
+      if (typeof window !== "undefined") {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(localUser))
+      }
+      return true
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message)
+      } else {
+        setError("Registration failed. Please try again.")
+      }
       return false
     }
-
-    const newUser = {
-      id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      email,
-      password, // In real app, this would be hashed
-      name,
-      title,
-      createdAt: new Date().toISOString(),
-    }
-
-    saveUser(newUser)
-
-    const userData: User = {
-      id: newUser.id,
-      email: newUser.email,
-      name: newUser.name,
-      title: newUser.title,
-      createdAt: newUser.createdAt,
-    }
-
-    setUser(userData)
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(userData))
-    }
-
-    return true
   }
 
   const logout = () => {
@@ -164,50 +133,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const updateUser = async (updates: { name?: string; email?: string; title?: string }): Promise<boolean> => {
     if (!user) return false
     
-    await new Promise((resolve) => setTimeout(resolve, 500))
-    
-    // Check if email is being changed and if it already exists
-    if (updates.email && updates.email !== user.email) {
-      const users = getStoredUsers()
-      if (users.some((u) => u.email === updates.email && u.id !== user.id)) {
-        return false // Email already exists
-      }
-    }
-    
-    const success = updateStoredUser(user.id, updates)
-    
-    if (success) {
-      const updatedUser: User = {
-        ...user,
-        ...updates,
-      }
-      setUser(updatedUser)
+    try {
+      setError(null)
+      const response = await updateUserProfile(user.id, updates)
+      const localUser = apiUserToLocal(response.user)
+      
+      setUser(localUser)
       if (typeof window !== "undefined") {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedUser))
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(localUser))
       }
+      return true
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message)
+      } else {
+        setError("Failed to update profile. Please try again.")
+      }
+      return false
     }
-    
-    return success
   }
 
   const updatePassword = async (currentPassword: string, newPassword: string): Promise<boolean> => {
     if (!user) return false
     
-    await new Promise((resolve) => setTimeout(resolve, 500))
-    
-    const users = getStoredUsers()
-    const foundUser = users.find((u) => u.id === user.id)
-    
-    if (!foundUser || foundUser.password !== currentPassword) {
-      return false // Current password is incorrect
+    try {
+      setError(null)
+      await updateUserPassword(user.id, currentPassword, newPassword)
+      return true
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message)
+      } else {
+        setError("Failed to update password. Please try again.")
+      }
+      return false
     }
-    
-    const success = updateStoredUser(user.id, { password: newPassword })
-    return success
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout, updateUser, updatePassword, isLoading }}>
+    <AuthContext.Provider value={{ user, login, signup, logout, updateUser, updatePassword, isLoading, error }}>
       {children}
     </AuthContext.Provider>
   )

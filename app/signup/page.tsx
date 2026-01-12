@@ -16,7 +16,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export default function SignupPage() {
   const router = useRouter()
-  const { signup } = useAuth()
+  const { signup, error: authError } = useAuth()
   const [name, setName] = useState("")
   const [title, setTitle] = useState("")
   const [email, setEmail] = useState("")
@@ -47,6 +47,13 @@ export default function SignupPage() {
     try {
       const success = await signup(name, email, password, title || undefined)
       if (success) {
+        // Notify admins about new user registration
+        if (typeof window !== "undefined") {
+          const description = `"${name}" (${email}) has registered.`
+          window.dispatchEvent(new CustomEvent("cloudguide:notification", {
+            detail: { type: "info", title: "New user registered", description, target: "admin" },
+          }))
+        }
         router.push("/dashboard")
         router.refresh()
       } else {

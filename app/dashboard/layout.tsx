@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { usePathname } from "next/navigation"
 import { Sidebar } from "@/components/panel/sidebar"
 import { PanelHeader } from "@/components/panel/panel-header"
 import { ProtectedRoute } from "@/components/protected-route"
@@ -13,9 +14,16 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
+  const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  
+  // Check if this is an admin route - check pathname directly
+  const isAdminRoute = pathname?.startsWith("/dashboard/admin") ?? false
 
   useEffect(() => {
+    // Don't load sidebar state for admin pages
+    if (isAdminRoute) return
+    
     // Load sidebar state from localStorage
     if (typeof window !== "undefined") {
       const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY)
@@ -23,9 +31,10 @@ export default function DashboardLayout({
         setSidebarOpen(JSON.parse(stored))
       }
     }
-  }, [])
+  }, [isAdminRoute, pathname])
 
   const handleToggle = () => {
+    if (isAdminRoute) return
     const newState = !sidebarOpen
     setSidebarOpen(newState)
     if (typeof window !== "undefined") {
@@ -34,10 +43,18 @@ export default function DashboardLayout({
   }
 
   const handleClose = () => {
+    if (isAdminRoute) return
     setSidebarOpen(false)
     if (typeof window !== "undefined") {
       localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify(false))
     }
+  }
+
+  // Don't render user dashboard layout for admin pages - they have their own layout
+  // This must be checked after hooks but before render
+  if (isAdminRoute) {
+    // Return children without any wrapper - admin layout will handle everything
+    return <>{children}</>
   }
 
   return (

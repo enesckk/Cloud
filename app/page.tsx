@@ -1,10 +1,22 @@
+"use client"
+
+import { useEffect } from "react"
 import Link from "next/link"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { BookOpen, Calculator, ArrowRight, CheckCircle2, Cloud, Shield, TrendingUp, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useAuth } from "@/lib/auth-context"
 
 export default function HomePage() {
+  const { user, logout } = useAuth()
+
+  useEffect(() => {
+    // Logout when user navigates to home page
+    if (user) {
+      logout()
+    }
+  }, []) // Only run on mount
   return (
     <div className="flex min-h-screen flex-col">
       <Header />

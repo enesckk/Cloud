@@ -17,6 +17,7 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  Shield,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -52,6 +53,7 @@ const menuItems = [
     icon: Settings,
   },
 ]
+
 
 interface SidebarProps {
   isOpen: boolean

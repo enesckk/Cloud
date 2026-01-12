@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: cloudguide_postgres
+    environment:
+      POSTGRES_USER: cloudguide_user
+      POSTGRES_PASSWORD: cloudguide_pass
+      POSTGRES_DB: cloudguide_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloudguide_user -d cloudguide_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: .
+    container_name: cloudguide_backend
+    ports:
+      - "5000:5000"
+    environment:
+      DATABASE_URL: postgresql://cloudguide_user:cloudguide_pass@postgres:5432/cloudguide_db
+      FLASK_ENV: development
+      FLASK_DEBUG: True
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    command: >
+      sh -c "python -m backend.database.migrations.init_db &&
+             python app.py"
+
+volumes:
+  postgres_data:

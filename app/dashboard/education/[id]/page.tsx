@@ -1,6 +1,10 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
+import { getEducationById } from "@/lib/api-client"
+import { Loader2 } from "lucide-react"
+import { toast } from "sonner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -386,22 +390,65 @@ export default function EducationDetailPage() {
   const params = useParams()
   const router = useRouter()
   const contentId = params.id as string
-  let content = educationContent[contentId]
+  const [content, setContent] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
 
-  // If content not found in detail data, create a basic version
-  if (!content) {
-    // This is a fallback - in a real app, you'd fetch from a shared data source
-    content = {
-      id: contentId,
-      title: "Education Material",
-      description: "This content is being prepared. Please check back later.",
-      fullContent: "This content is currently being developed. We're working to provide you with comprehensive educational materials.",
-      type: "article",
-      category: "basics",
-      level: "beginner",
-      provider: "general",
-      tags: [],
+  useEffect(() => {
+    const loadContent = async () => {
+      try {
+        const response = await getEducationById(contentId)
+        const edu = response.education
+        setContent({
+          id: edu.id,
+          title: edu.title,
+          description: edu.description,
+          fullContent: edu.full_content || edu.description,
+          type: edu.type,
+          category: edu.category,
+          level: edu.level,
+          provider: edu.provider || "general",
+          tags: edu.tags || [],
+          duration: edu.duration,
+          url: edu.url,
+        })
+      } catch (err: any) {
+        console.error("Failed to load education:", err)
+        // Fallback to static data
+        const staticContent = educationContent[contentId]
+        if (staticContent) {
+          setContent({
+            ...staticContent,
+            fullContent: staticContent.fullContent || staticContent.description,
+          })
+        } else {
+          setContent({
+            id: contentId,
+            title: "Education Material",
+            description: "This content is being prepared. Please check back later.",
+            fullContent: "This content is currently being developed. We're working to provide you with comprehensive educational materials.",
+            type: "article",
+            category: "basics",
+            level: "beginner",
+            provider: "general",
+            tags: [],
+          })
+          toast.error("Education content not found")
+        }
+      } finally {
+        setLoading(false)
+      }
     }
+    loadContent()
+  }, [contentId])
+
+  if (loading || !content) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+      </div>
+    )
   }
 
   const CategoryInfo = categoryInfo[content.category]

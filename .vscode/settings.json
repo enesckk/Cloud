@@ -1,0 +1,16 @@
+{
+    "sqltools.connections": [
+        {
+            "ssh": "Disabled",
+            "previewLimit": 300,
+            "server": "localhost",
+            "port": 5433,
+            "driver": "PostgreSQL",
+            "name": "CloudGuide Database",
+            "database": "cloudguide_db",
+            "username": "cloudguide_user",
+            "connectionTimeout": 300,
+            "password": "cloudguide_pass"
+        }
+    ]
+}
