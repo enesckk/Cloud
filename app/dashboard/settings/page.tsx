@@ -2,12 +2,14 @@
 
 import { useState, useEffect } from "react"
 import { useAuth } from "@/lib/auth-context"
+import { useTheme } from "next-themes"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import {
   User,
   Mail,
@@ -18,10 +20,15 @@ import {
   CheckCircle2,
   AlertCircle,
   Briefcase,
+  Moon,
+  Sun,
+  Monitor,
 } from "lucide-react"
 
 export default function SettingsPage() {
   const { user, updateUser, updatePassword } = useAuth()
+  const { theme, setTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
   const [loading, setLoading] = useState(false)
   const [successMessage, setSuccessMessage] = useState("")
   const [errorMessage, setErrorMessage] = useState("")
@@ -39,6 +46,10 @@ export default function SettingsPage() {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     if (user) {
@@ -342,6 +353,59 @@ export default function SettingsPage() {
               </div>
             </div>
           </form>
+        </CardContent>
+      </Card>
+
+      {/* Theme Settings */}
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Monitor className="h-5 w-5" />
+            Appearance
+          </CardTitle>
+          <CardDescription>Choose your preferred theme</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {mounted ? (
+            <RadioGroup value={theme} onValueChange={setTheme} className="space-y-3">
+              <div className="flex items-center space-x-2 rounded-lg border p-4 hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setTheme("light")}>
+                <RadioGroupItem value="light" id="light" />
+                <Label htmlFor="light" className="flex-1 cursor-pointer flex items-center gap-3">
+                  <Sun className="h-5 w-5 text-yellow-500" />
+                  <div>
+                    <div className="font-medium">Light</div>
+                    <div className="text-sm text-muted-foreground">Use light theme</div>
+                  </div>
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2 rounded-lg border p-4 hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setTheme("dark")}>
+                <RadioGroupItem value="dark" id="dark" />
+                <Label htmlFor="dark" className="flex-1 cursor-pointer flex items-center gap-3">
+                  <Moon className="h-5 w-5 text-blue-500" />
+                  <div>
+                    <div className="font-medium">Dark</div>
+                    <div className="text-sm text-muted-foreground">Use dark theme</div>
+                  </div>
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2 rounded-lg border p-4 hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setTheme("system")}>
+                <RadioGroupItem value="system" id="system" />
+                <Label htmlFor="system" className="flex-1 cursor-pointer flex items-center gap-3">
+                  <Monitor className="h-5 w-5 text-gray-500" />
+                  <div>
+                    <div className="font-medium">System</div>
+                    <div className="text-sm text-muted-foreground">Match your device theme</div>
+                  </div>
+                </Label>
+              </div>
+            </RadioGroup>
+          ) : (
+            <div className="space-y-3">
+              <div className="h-16 rounded-lg border bg-muted animate-pulse" />
+              <div className="h-16 rounded-lg border bg-muted animate-pulse" />
+              <div className="h-16 rounded-lg border bg-muted animate-pulse" />
+            </div>
+          )}
         </CardContent>
       </Card>
 
