@@ -97,7 +97,7 @@ DEFAULT_PROVIDERS = [
             "turkey-local": 1.0
         },
         "available_regions": ["europe", "middle-east", "asia-pacific", "north-america", "latin-america", "turkey-local"],
-        "logo": "GCP",
+        "logo": "google",
         "description": "Google's cloud platform with advanced analytics and AI"
     },
     {

@@ -57,26 +57,36 @@ const providerInfo = {
     name: "Amazon Web Services",
     shortName: "AWS",
     logo: "AWS",
+    logoPath: "/providers/aws.png",
     color: "text-orange-600",
   },
   azure: {
     name: "Microsoft Azure",
     shortName: "Azure",
     logo: "Azure",
+    logoPath: "/providers/azure.png",
     color: "text-blue-600",
   },
   gcp: {
     name: "Google Cloud Platform",
     shortName: "GCP",
     logo: "GCP",
+    logoPath: "/providers/google.png",
     color: "text-blue-500",
   },
   huawei: {
     name: "Huawei Cloud",
     shortName: "Huawei",
     logo: "Huawei",
+    logoPath: "/providers/huawei.png",
     color: "text-red-600",
   },
+}
+
+// Helper function to get provider logo path
+const getProviderLogoPath = (providerName: string): string => {
+  const normalizedName = providerName.toLowerCase() === "gcp" ? "google" : providerName.toLowerCase()
+  return providerInfo[providerName as keyof typeof providerInfo]?.logoPath || `/providers/${normalizedName}.png`
 }
 
 export default function ReportsPage() {
@@ -432,17 +442,42 @@ export default function ReportsPage() {
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-wrap gap-1">
-                            {report.config.providers.map((provider) => (
-                              <Badge key={provider} variant="secondary" className="text-xs">
-                                {provider.toUpperCase()}
-                              </Badge>
-                            ))}
+                            {report.config.providers.map((provider) => {
+                              const logoPath = getProviderLogoPath(provider)
+                              return (
+                                <Badge key={provider} variant="secondary" className="text-xs flex items-center gap-1.5 px-2 py-1">
+                                  <div className="relative w-4 h-4 flex-shrink-0 flex items-center justify-center">
+                                    <img
+                                      src={logoPath}
+                                      alt={provider.toUpperCase()}
+                                      className="w-full h-full object-contain"
+                                      onError={(e) => {
+                                        const target = e.target as HTMLImageElement
+                                        target.style.display = "none"
+                                      }}
+                                    />
+                                  </div>
+                                  <span>{provider.toUpperCase()}</span>
+                                </Badge>
+                              )
+                            })}
                           </div>
                         </TableCell>
                         <TableCell>
                           {bestProvider ? (
                             <div className="flex items-center gap-2">
                               <CheckCircle2 className="h-4 w-4 text-green-600" />
+                              <div className="relative w-5 h-5 flex-shrink-0 flex items-center justify-center">
+                                <img
+                                  src={getProviderLogoPath(bestProvider.provider)}
+                                  alt={bestProvider.provider.toUpperCase()}
+                                  className="w-full h-full object-contain"
+                                  onError={(e) => {
+                                    const target = e.target as HTMLImageElement
+                                    target.style.display = "none"
+                                  }}
+                                />
+                              </div>
                               <span className="font-medium">{bestProvider.provider.toUpperCase()}</span>
                             </div>
                           ) : (

@@ -21,26 +21,36 @@ const providerInfo = {
     name: "Amazon Web Services",
     shortName: "AWS",
     logo: "AWS",
+    logoPath: "/providers/aws.png",
     color: "text-orange-600",
   },
   azure: {
     name: "Microsoft Azure",
     shortName: "Azure",
     logo: "Azure",
+    logoPath: "/providers/azure.png",
     color: "text-blue-600",
   },
   gcp: {
     name: "Google Cloud Platform",
     shortName: "GCP",
     logo: "GCP",
+    logoPath: "/providers/google.png",
     color: "text-blue-500",
   },
   huawei: {
     name: "Huawei Cloud",
     shortName: "Huawei",
     logo: "Huawei",
+    logoPath: "/providers/huawei.png",
     color: "text-red-600",
   },
+}
+
+// Helper function to get provider logo path
+const getProviderLogoPath = (providerName: string): string => {
+  const normalizedName = providerName.toLowerCase() === "gcp" ? "google" : providerName.toLowerCase()
+  return providerInfo[providerName as keyof typeof providerInfo]?.logoPath || `/providers/${normalizedName}.png`
 }
 
 export default function ReportDetailPage() {
@@ -747,11 +757,25 @@ export default function ReportDetailPage() {
               <div>
                 <div className="text-xs text-muted-foreground mb-1">Providers</div>
                 <div className="flex flex-wrap gap-1">
-                  {report.config.providers.map((provider) => (
-                    <Badge key={provider} variant="secondary">
-                      {provider.toUpperCase()}
-                    </Badge>
-                  ))}
+                  {report.config.providers.map((provider) => {
+                    const logoPath = getProviderLogoPath(provider)
+                    return (
+                      <Badge key={provider} variant="secondary" className="flex items-center gap-1.5 px-2 py-1">
+                        <div className="relative w-4 h-4 flex-shrink-0 flex items-center justify-center">
+                          <img
+                            src={logoPath}
+                            alt={provider.toUpperCase()}
+                            className="w-full h-full object-contain"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement
+                              target.style.display = "none"
+                            }}
+                          />
+                        </div>
+                        <span>{provider.toUpperCase()}</span>
+                      </Badge>
+                    )
+                  })}
                 </div>
               </div>
             </div>
@@ -796,11 +820,26 @@ export default function ReportDetailPage() {
 
                       <div className="flex items-start gap-6 pr-24">
                         <div
-                          className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-background border-2 ${
+                          className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-background border-2 overflow-hidden ${
                             estimate.isMostEconomical ? "border-green-500" : "border-border"
-                          } text-2xl font-bold ${info.color || "text-gray-600"}`}
+                          }`}
                         >
-                          {info.logo || estimate.provider.toUpperCase()}
+                          <img
+                            src={getProviderLogoPath(estimate.provider)}
+                            alt={info.shortName}
+                            className="w-full h-full object-contain p-2"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement
+                              const parent = target.parentElement
+                              if (parent && !parent.querySelector(".fallback-text")) {
+                                target.style.display = "none"
+                                const fallback = document.createElement("span")
+                                fallback.className = `fallback-text text-xl font-bold ${info.color || "text-gray-600"}`
+                                fallback.textContent = info.shortName || estimate.provider.toUpperCase()
+                                parent.appendChild(fallback)
+                              }
+                            }}
+                          />
                         </div>
 
                         <div className="flex-1">

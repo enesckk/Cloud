@@ -50,6 +50,7 @@ const defaultProviderInfo: Record<string, {
   name: string
   shortName: string
   logo: string
+  logoPath: string
   color: string
   bgColor: string
   borderColor: string
@@ -58,6 +59,7 @@ const defaultProviderInfo: Record<string, {
     name: "Amazon Web Services",
     shortName: "AWS",
     logo: "AWS",
+    logoPath: "/providers/aws.png",
     color: "text-orange-600",
     bgColor: "bg-orange-50 dark:bg-orange-950/20",
     borderColor: "border-orange-200 dark:border-orange-900",
@@ -66,6 +68,7 @@ const defaultProviderInfo: Record<string, {
     name: "Microsoft Azure",
     shortName: "Azure",
     logo: "Azure",
+    logoPath: "/providers/azure.png",
     color: "text-blue-600",
     bgColor: "bg-blue-50 dark:bg-blue-950/20",
     borderColor: "border-blue-200 dark:border-blue-900",
@@ -74,6 +77,7 @@ const defaultProviderInfo: Record<string, {
     name: "Google Cloud Platform",
     shortName: "GCP",
     logo: "GCP",
+    logoPath: "/providers/google.png",
     color: "text-blue-500",
     bgColor: "bg-blue-50 dark:bg-blue-950/20",
     borderColor: "border-blue-200 dark:border-blue-900",
@@ -82,10 +86,37 @@ const defaultProviderInfo: Record<string, {
     name: "Huawei Cloud",
     shortName: "Huawei",
     logo: "Huawei",
+    logoPath: "/providers/huawei.png",
     color: "text-red-600",
     bgColor: "bg-red-50 dark:bg-red-950/20",
     borderColor: "border-red-200 dark:border-red-900",
   },
+}
+
+// Helper function to get provider logo path
+const getProviderLogoPath = (providerName: string, dbProvider?: ApiProvider): string => {
+  if (dbProvider?.logo) {
+    // If logo is a full URL, return it
+    if (dbProvider.logo.startsWith("http")) {
+      return dbProvider.logo
+    }
+    // If logo is a path, check if it exists, otherwise use default
+    if (dbProvider.logo.startsWith("/")) {
+      return dbProvider.logo
+    }
+    // Normalize logo name: GCP/gcp -> google, others stay the same
+    const logoLower = dbProvider.logo.toLowerCase()
+    const normalizedLogo = (logoLower === "gcp") ? "google" : logoLower
+    return `/providers/${normalizedLogo}.png`
+  }
+  // Fallback to static providerInfo
+  const logoPath = defaultProviderInfo[providerName]?.logoPath
+  if (logoPath) {
+    return logoPath
+  }
+  // Final fallback - normalize provider name (gcp -> google)
+  const normalizedName = providerName.toLowerCase() === "gcp" ? "google" : providerName.toLowerCase()
+  return `/providers/${normalizedName}.png`
 }
 
 type Provider = string
@@ -546,19 +577,22 @@ export default function ComparePage() {
         name: dbProvider.display_name,
         shortName: dbProvider.short_name,
         logo: dbProvider.logo || dbProvider.short_name,
+        logoPath: getProviderLogoPath(providerName, dbProvider),
         color: defaultProviderInfo[providerName]?.color || "text-gray-600",
         bgColor: defaultProviderInfo[providerName]?.bgColor || "bg-gray-50",
         borderColor: defaultProviderInfo[providerName]?.borderColor || "border-gray-200",
       }
     }
-    return defaultProviderInfo[providerName] || {
+    const defaultInfo = defaultProviderInfo[providerName] || {
       name: providerName,
       shortName: providerName.toUpperCase(),
       logo: providerName.toUpperCase(),
+      logoPath: `/providers/${providerName.toLowerCase() === "gcp" ? "google" : providerName.toLowerCase()}.png`,
       color: "text-gray-600",
       bgColor: "bg-gray-50",
       borderColor: "border-gray-200",
     }
+    return defaultInfo
   }
 
   // Get all available providers (from DB or default)
@@ -722,9 +756,26 @@ export default function ComparePage() {
                         onCheckedChange={() => handleProviderToggle(provider)}
                         onClick={(e) => e.stopPropagation()}
                       />
+                      <div className="relative w-12 h-12 flex-shrink-0 flex items-center justify-center">
+                        <img
+                          src={info.logoPath}
+                          alt={info.shortName}
+                          className="w-full h-full object-contain"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement
+                            const parent = target.parentElement
+                            if (parent && !parent.querySelector(".fallback-text")) {
+                              target.style.display = "none"
+                              const fallback = document.createElement("span")
+                              fallback.className = "fallback-text text-sm font-bold text-foreground"
+                              fallback.textContent = info.shortName
+                              parent.appendChild(fallback)
+                            }
+                          }}
+                        />
+                      </div>
                       <div>
-                        <div className={`font-bold text-lg ${info.color}`}>{info.shortName}</div>
-                        <div className="text-xs text-muted-foreground">{info.name}</div>
+                        <div className="text-sm text-muted-foreground">{info.name}</div>
                       </div>
                     </div>
                     {isSelected && (
@@ -879,11 +930,28 @@ export default function ComparePage() {
                             const info = getProviderInfo(provider)
                             return (
                               <TableHead key={provider} className="text-center min-w-[140px]">
-                                <div className={`font-bold text-base ${info.color}`}>
-                                  {info.shortName}
-                                </div>
-                                <div className="text-xs text-muted-foreground font-normal mt-1">
-                                  {info.name}
+                                <div className="flex flex-col items-center gap-2">
+                                  <div className="relative w-12 h-12 flex-shrink-0 flex items-center justify-center">
+                                    <img
+                                      src={info.logoPath}
+                                      alt={info.shortName}
+                                      className="w-full h-full object-contain"
+                                      onError={(e) => {
+                                        const target = e.target as HTMLImageElement
+                                        const parent = target.parentElement
+                                        if (parent && !parent.querySelector(".fallback-text")) {
+                                          target.style.display = "none"
+                                          const fallback = document.createElement("span")
+                                          fallback.className = "fallback-text text-sm font-bold text-foreground"
+                                          fallback.textContent = info.shortName
+                                          parent.appendChild(fallback)
+                                        }
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="text-xs text-muted-foreground font-normal">
+                                    {info.name}
+                                  </div>
                                 </div>
                               </TableHead>
                             )
@@ -986,9 +1054,29 @@ export default function ComparePage() {
                               className={`absolute top-0 right-0 w-20 h-20 ${info.bgColor} rounded-bl-full opacity-50`}
                             />
                             <CardHeader>
-                              <CardTitle className={`text-base ${info.color} relative z-10`}>
-                                {info.shortName}
-                              </CardTitle>
+                              <div className="flex items-center gap-3 relative z-10">
+                                <div className="relative w-10 h-10 flex-shrink-0 flex items-center justify-center">
+                                  <img
+                                    src={info.logoPath}
+                                    alt={info.shortName}
+                                    className="w-full h-full object-contain"
+                                    onError={(e) => {
+                                      const target = e.target as HTMLImageElement
+                                      const parent = target.parentElement
+                                      if (parent && !parent.querySelector(".fallback-text")) {
+                                        target.style.display = "none"
+                                        const fallback = document.createElement("span")
+                                        fallback.className = "fallback-text text-sm font-normal text-foreground"
+                                        fallback.textContent = info.shortName
+                                        parent.appendChild(fallback)
+                                      }
+                                    }}
+                                  />
+                                </div>
+                                <CardTitle className="text-sm text-muted-foreground font-normal">
+                                  {info.name}
+                                </CardTitle>
+                              </div>
                             </CardHeader>
                             <CardContent className="relative z-10">
                               <div className="space-y-4">
@@ -1040,9 +1128,29 @@ export default function ComparePage() {
                         return (
                         <Card key={provider} className={info.bgColor}>
                           <CardHeader>
-                            <CardTitle className={`text-base ${info.color}`}>
-                              {info.shortName}
-                            </CardTitle>
+                            <div className="flex items-center gap-3">
+                              <div className="relative w-10 h-10 flex-shrink-0 flex items-center justify-center">
+                                <img
+                                  src={info.logoPath}
+                                  alt={info.shortName}
+                                  className="w-full h-full object-contain"
+                                  onError={(e) => {
+                                    const target = e.target as HTMLImageElement
+                                    const parent = target.parentElement
+                                    if (parent && !parent.querySelector(".fallback-text")) {
+                                      target.style.display = "none"
+                                      const fallback = document.createElement("span")
+                                      fallback.className = "fallback-text text-sm font-normal text-foreground"
+                                      fallback.textContent = info.shortName
+                                      parent.appendChild(fallback)
+                                    }
+                                  }}
+                                />
+                              </div>
+                              <CardTitle className="text-sm text-muted-foreground font-normal">
+                                {info.name}
+                              </CardTitle>
+                            </div>
                           </CardHeader>
                           <CardContent>
                             <ul className="space-y-2">

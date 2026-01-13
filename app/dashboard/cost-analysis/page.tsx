@@ -56,27 +56,52 @@ const providerInfo = {
   aws: {
     name: "Amazon Web Services",
     shortName: "AWS",
-    logo: "AWS",
+    logo: "/providers/aws.png",
     color: "text-orange-600",
   },
   azure: {
     name: "Microsoft Azure",
     shortName: "Azure",
-    logo: "Azure",
+    logo: "/providers/azure.png",
     color: "text-blue-600",
   },
   gcp: {
     name: "Google Cloud Platform",
     shortName: "GCP",
-    logo: "GCP",
+    logo: "/providers/google.png",
     color: "text-blue-500",
   },
   huawei: {
     name: "Huawei Cloud",
     shortName: "Huawei",
-    logo: "Huawei",
+    logo: "/providers/huawei.png",
     color: "text-red-600",
   },
+}
+
+// Helper function to get provider logo path
+const getProviderLogo = (providerName: string, dbProvider?: ApiProvider): string => {
+  if (dbProvider?.logo) {
+    // If logo is a full URL, return it
+    if (dbProvider.logo.startsWith("http")) {
+      return dbProvider.logo
+    }
+    // If logo is a path, check if it exists, otherwise use default
+    if (dbProvider.logo.startsWith("/")) {
+      return dbProvider.logo
+    }
+    // Normalize logo name: GCP -> google, others stay the same
+    const normalizedLogo = dbProvider.logo.toLowerCase() === "gcp" ? "google" : dbProvider.logo.toLowerCase()
+    return `/providers/${normalizedLogo}.png`
+  }
+  // Fallback to static providerInfo - this should always return a valid path
+  const logoPath = providerInfo[providerName as keyof typeof providerInfo]?.logo
+  if (logoPath) {
+    return logoPath
+  }
+  // Final fallback - normalize provider name (gcp -> google)
+  const normalizedName = providerName.toLowerCase() === "gcp" ? "google" : providerName.toLowerCase()
+  return `/providers/${normalizedName}.png`
 }
 
 const useCaseOptions: Array<{ value: UseCase; label: string; description: string }> = [
@@ -1004,10 +1029,12 @@ export default function CostAnalysisPage() {
                             // Also check if provider is active
                             isAvailable = isAvailable && (provider.is_active ?? true)
                             
+                            const logoPath = getProviderLogo(providerName, provider)
+                            
                             return (
                               <div
                                 key={providerName}
-                                className={`flex items-center space-x-2 rounded-lg border p-3 transition-colors ${
+                                className={`flex items-center space-x-3 rounded-lg border p-3 transition-colors ${
                                   isAvailable
                                     ? "border-border hover:bg-muted/50"
                                     : "border-dashed border-muted-foreground/30 opacity-50 cursor-not-allowed"
@@ -1019,17 +1046,38 @@ export default function CostAnalysisPage() {
                                   onCheckedChange={() => handleProviderToggle(providerName)}
                                   disabled={!isAvailable}
                                 />
-                                <Label
-                                  htmlFor={providerName}
-                                  className={`flex-1 cursor-pointer text-sm font-medium ${
-                                    !isAvailable ? "cursor-not-allowed" : ""
-                                  }`}
-                                >
-                                  {info.shortName}
-                                  {!isAvailable && (
-                                    <span className="ml-1 text-xs text-muted-foreground">(N/A)</span>
-                                  )}
-                                </Label>
+                                <div className="flex items-center space-x-2 flex-1">
+                                  <div className="relative w-12 h-12 flex-shrink-0 flex items-center justify-center">
+                                    <img
+                                      src={logoPath}
+                                      alt={info.shortName}
+                                      className="w-full h-full object-contain"
+                                      onError={(e) => {
+                                        // Fallback to text if image fails to load
+                                        const target = e.target as HTMLImageElement
+                                        target.style.display = "none"
+                                        const parent = target.parentElement
+                                        if (parent && !parent.querySelector(".fallback-text")) {
+                                          const fallback = document.createElement("span")
+                                          fallback.className = "fallback-text text-xs font-semibold text-muted-foreground"
+                                          fallback.textContent = info.shortName
+                                          parent.appendChild(fallback)
+                                        }
+                                      }}
+                                    />
+                                  </div>
+                                  <Label
+                                    htmlFor={providerName}
+                                    className={`cursor-pointer text-sm font-medium ${
+                                      !isAvailable ? "cursor-not-allowed" : ""
+                                    }`}
+                                  >
+                                    {info.shortName}
+                                  </Label>
+                                </div>
+                                {!isAvailable && (
+                                  <span className="ml-1 text-xs text-muted-foreground">(N/A)</span>
+                                )}
                               </div>
                             )
                           })}
@@ -1077,6 +1125,7 @@ export default function CostAnalysisPage() {
                               const info = dbProvider 
                                 ? { name: dbProvider.display_name, shortName: dbProvider.short_name, logo: dbProvider.logo || dbProvider.short_name, color: providerInfo[estimate.provider as keyof typeof providerInfo]?.color || "text-gray-600" }
                                 : providerInfo[estimate.provider as keyof typeof providerInfo] || { name: estimate.provider, shortName: estimate.provider.toUpperCase(), logo: estimate.provider.toUpperCase(), color: "text-gray-600" }
+                              const estimateLogoPath = getProviderLogo(estimate.provider, dbProvider)
                               return (
                                 <div
                                   key={estimate.provider}
@@ -1098,11 +1147,28 @@ export default function CostAnalysisPage() {
 
                                   <div className="flex items-start gap-4 pr-20">
                                     <div
-                                      className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-background border-2 ${
+                                      className={`flex h-20 w-20 shrink-0 items-center justify-center rounded-xl bg-background border-2 overflow-hidden ${
                                         estimate.isMostEconomical ? "border-green-500" : "border-border"
-                                      } text-xl font-bold ${info.color}`}
+                                      }`}
                                     >
-                                      {info.logo}
+                                      <img
+                                        src={estimateLogoPath}
+                                        alt={info.shortName}
+                                        className="w-full h-full object-contain p-3"
+                                        loading="lazy"
+                                        onError={(e) => {
+                                          // Fallback to text if image fails to load
+                                          const target = e.target as HTMLImageElement
+                                          const parent = target.parentElement
+                                          if (parent && !parent.querySelector(".fallback-text")) {
+                                            target.style.display = "none"
+                                            const fallback = document.createElement("span")
+                                            fallback.className = `fallback-text text-xl font-bold ${info.color}`
+                                            fallback.textContent = info.shortName
+                                            parent.appendChild(fallback)
+                                          }
+                                        }}
+                                      />
                                     </div>
 
                                     <div className="flex-1 min-w-0">

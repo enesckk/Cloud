@@ -11,6 +11,26 @@ import { ArrowLeft, Edit, Cloud, Server, HardDrive, Globe, Loader2 } from "lucid
 import { getAdminProviders, type Provider } from "@/lib/api-client"
 import { toast } from "sonner"
 
+// Helper function to get provider logo path
+const getProviderLogoPath = (provider: Provider): string => {
+  if (provider.logo) {
+    // If logo is a full URL, return it
+    if (provider.logo.startsWith("http")) {
+      return provider.logo
+    }
+    // If logo is a path, check if it exists, otherwise use default
+    if (provider.logo.startsWith("/")) {
+      return provider.logo
+    }
+    // Normalize logo name: GCP -> google, others stay the same
+    const normalizedLogo = provider.logo.toLowerCase() === "gcp" ? "google" : provider.logo.toLowerCase()
+    return `/providers/${normalizedLogo}.png`
+  }
+  // Fallback based on provider name
+  const normalizedName = provider.name.toLowerCase() === "gcp" ? "google" : provider.name.toLowerCase()
+  return `/providers/${normalizedName}.png`
+}
+
 export default function ProviderDetailsPage() {
   const router = useRouter()
   const params = useParams()
@@ -70,8 +90,32 @@ export default function ProviderDetailsPage() {
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <div className="p-3 rounded-lg bg-primary/10">
-                <Cloud className="h-6 w-6 text-primary" />
+              <div className="relative w-16 h-16 flex-shrink-0 flex items-center justify-center rounded-lg bg-background border border-border overflow-hidden">
+                <img
+                  src={getProviderLogoPath(provider)}
+                  alt={provider.short_name}
+                  className="w-full h-full object-contain p-2"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement
+                    const parent = target.parentElement
+                    if (parent && !parent.querySelector(".fallback-icon")) {
+                      target.style.display = "none"
+                      const fallback = document.createElement("div")
+                      fallback.className = "fallback-icon flex items-center justify-center w-full h-full p-3 rounded-lg bg-primary/10"
+                      const cloudIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+                      cloudIcon.setAttribute("class", "h-6 w-6 text-primary")
+                      cloudIcon.setAttribute("fill", "none")
+                      cloudIcon.setAttribute("viewBox", "0 0 24 24")
+                      cloudIcon.setAttribute("stroke", "currentColor")
+                      cloudIcon.setAttribute("stroke-width", "2")
+                      const path = document.createElementNS("http://www.w3.org/2000/svg", "path")
+                      path.setAttribute("d", "M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z")
+                      cloudIcon.appendChild(path)
+                      fallback.appendChild(cloudIcon)
+                      parent.appendChild(fallback)
+                    }
+                  }}
+                />
               </div>
               <div>
                 <h1 className="text-3xl font-bold">{provider.display_name}</h1>
