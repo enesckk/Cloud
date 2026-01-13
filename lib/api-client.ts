@@ -810,3 +810,171 @@ export async function deleteAdminProvider(userId: string, providerId: string): P
     throw new ApiError(500, "network_error", "Network error occurred")
   }
 }
+
+/**
+ * Cloud Provider Pricing API Interfaces
+ * 
+ * These interfaces and functions demonstrate integration with AWS, Azure, and GCP Pricing APIs.
+ * The backend fetches real-time pricing data from official provider APIs.
+ */
+
+export interface ProviderPricingRequest {
+  providers: string[]
+  instance_types: Record<string, string>
+  os_type: string
+  storage_type: string
+  region: string
+}
+
+export interface ProviderPricingResponse {
+  success: boolean
+  data: {
+    providers: Record<string, {
+      provider: string
+      compute: {
+        provider: string
+        instance_type: string
+        os_type: string
+        region: string
+        pricing: {
+          on_demand?: {
+            price_per_hour: number
+            currency: string
+            unit: string
+          }
+          pay_as_you_go?: {
+            price_per_hour: number
+            currency: string
+            unit: string
+          }
+          reserved?: {
+            "1_year"?: {
+              price_per_hour: number
+              savings: string
+            }
+            "3_year"?: {
+              price_per_hour: number
+              savings: string
+            }
+          }
+        }
+        metadata: {
+          api_endpoint: string
+          api_version: string
+          last_updated: string
+        }
+      }
+      storage: {
+        provider: string
+        storage_type: string
+        region: string
+        pricing: {
+          price_per_gb_month: number
+          currency: string
+          unit: string
+        }
+        metadata: {
+          api_endpoint: string
+          api_version: string
+          last_updated: string
+        }
+      }
+      region_multiplier: number
+      api_sources: {
+        compute_api: string
+        storage_api: string
+        last_updated: string
+      }
+    }>
+    region: string
+    os_type: string
+    storage_type: string
+  }
+  message: string
+}
+
+/**
+ * Get pricing data from a specific cloud provider API
+ * 
+ * This function calls the backend which integrates with official provider APIs:
+ * - AWS Pricing API: https://pricing.us-east-1.amazonaws.com
+ * - Azure Retail Prices API: https://prices.azure.com/api/retail/prices
+ * - GCP Cloud Billing API: https://cloudbilling.googleapis.com/v1
+ */
+export async function getProviderPricing(
+  provider: "aws" | "azure" | "gcp",
+  params: {
+    instance_type: string
+    os_type: string
+    storage_type: string
+    region: string
+  }
+): Promise<ProviderPricingResponse> {
+  try {
+    const queryParams = new URLSearchParams({
+      instance_type: params.instance_type,
+      os_type: params.os_type,
+      storage_type: params.storage_type,
+      region: params.region,
+    })
+
+    const response = await fetch(`${API_BASE_URL}/pricing/provider/${provider}?${queryParams}`, {
+      method: "GET",
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new ApiError(
+        response.status,
+        errorData.error || "fetch_failed",
+        errorData.message || `Failed to fetch pricing from ${provider.toUpperCase()} API`
+      )
+    }
+
+    return await response.json()
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error
+    }
+    throw new ApiError(500, "network_error", "Network error occurred")
+  }
+}
+
+/**
+ * Compare pricing across multiple cloud providers
+ * 
+ * This function fetches pricing data from multiple provider APIs simultaneously
+ * and returns a comparison. The backend integrates with:
+ * - AWS Pricing API
+ * - Azure Retail Prices API  
+ * - GCP Cloud Billing API
+ */
+export async function compareProviderPricing(
+  data: ProviderPricingRequest
+): Promise<ProviderPricingResponse> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/pricing/compare`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new ApiError(
+        response.status,
+        errorData.error || "compare_failed",
+        errorData.message || "Failed to compare provider pricing"
+      )
+    }
+
+    return await response.json()
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error
+    }
+    throw new ApiError(500, "network_error", "Network error occurred")
+  }
+}

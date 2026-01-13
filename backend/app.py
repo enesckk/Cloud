@@ -23,6 +23,7 @@ from backend.routes.analyses import analyses_bp
 from backend.routes.admin import admin_bp
 from backend.routes.education import education_bp
 from backend.routes.providers import providers_bp
+from backend.routes.pricing import pricing_bp
 from backend.database.connection import init_db
 
 # Load environment variables
@@ -55,6 +56,7 @@ def create_app():
     app.register_blueprint(admin_bp, url_prefix="/api/admin")
     app.register_blueprint(education_bp, url_prefix="/api/education")
     app.register_blueprint(providers_bp, url_prefix="/api")
+    app.register_blueprint(pricing_bp, url_prefix="/api")
     
     return app
 
