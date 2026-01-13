@@ -114,6 +114,24 @@ pricing = client.get_compute_pricing(
 )
 ```
 
+**Huawei CCE (Cloud Container Engine):**
+```python
+cce_pricing = client.get_cce_pricing(
+    cluster_type="standard",
+    os_type="Linux",
+    region="cn-north-1"
+)
+```
+
+**Huawei CCI (Cloud Container Instance):**
+```python
+cci_pricing = client.get_cci_pricing(
+    instance_type="medium",
+    os_type="Linux",
+    region="cn-north-1"
+)
+```
+
 ## Pricing Service
 
 **Dosya:** `backend/services/pricing_service.py`
@@ -229,7 +247,29 @@ AZURE_TENANT_ID=your_tenant_id
 GCP_PRICING_API_ENDPOINT=https://cloudbilling.googleapis.com/v1
 GCP_API_KEY=your_gcp_api_key
 GCP_PROJECT_ID=your_project_id
+
+# Huawei Cloud
+HUAWEI_PRICING_API_ENDPOINT=https://bss.myhuaweicloud.com/v2
+HUAWEI_API_KEY=your_huawei_api_key
+HUAWEI_PROJECT_ID=your_project_id
+HUAWEI_REGION=cn-north-1
 ```
+
+## Huawei Container Services
+
+### Huawei CCE (Cloud Container Engine)
+- Managed Kubernetes service
+- Container orchestration ve management
+- Enterprise-grade container platform
+- Veritabanında `huawei-cce` olarak kayıtlı
+- API endpoint: `/v2/{project_id}/billing/ondemand/rating?product_type=CCE`
+
+### Huawei CCI (Cloud Container Instance)
+- Serverless container service
+- Hızlı deployment ve scaling
+- Pay-per-use pricing model
+- Veritabanında `huawei-cci` olarak kayıtlı
+- API endpoint: `/v2/{project_id}/billing/ondemand/rating?product_type=CCI`
 
 ## Notlar
 
@@ -237,3 +277,6 @@ GCP_PROJECT_ID=your_project_id
 - Gerçek API çağrıları simüle edilmiştir
 - Production ortamında gerçek API anahtarları ve authentication gereklidir
 - API rate limiting ve error handling production'da geliştirilmelidir
+- **ÖNEMLİ:** API entegrasyonları sadece gösterim amaçlıdır ve gerçek hesaplamaları etkilemez
+- **ÖNEMLİ:** Huawei CCE ve CCI servisleri veritabanında ayrı provider'lar olarak kayıtlıdır ve canlı sistemde görünecektir
+- Mevcut hesaplama sistemi eskisi gibi çalışmaya devam eder

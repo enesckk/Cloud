@@ -67,6 +67,17 @@ class PricingService:
             storage_pricing = self.huawei_client.get_storage_pricing(storage_type, region)
             region_multiplier = self.huawei_client.get_region_multiplier(region)
             
+        elif provider.lower() == "huawei-cce":
+            # CCE uses cluster type instead of instance type
+            compute_pricing = self.huawei_client.get_cce_pricing(instance_type, os_type, region)
+            storage_pricing = self.huawei_client.get_storage_pricing(storage_type, region)
+            region_multiplier = self.huawei_client.get_region_multiplier(region)
+            
+        elif provider.lower() == "huawei-cci":
+            compute_pricing = self.huawei_client.get_cci_pricing(instance_type, os_type, region)
+            storage_pricing = self.huawei_client.get_storage_pricing(storage_type, region)
+            region_multiplier = self.huawei_client.get_region_multiplier(region)
+            
         else:
             raise ValueError(f"Unsupported provider: {provider}")
         

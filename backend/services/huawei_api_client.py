@@ -28,6 +28,218 @@ class HuaweiPricingClient:
         self.project_id = os.getenv("HUAWEI_PROJECT_ID", None)
         self.region = os.getenv("HUAWEI_REGION", "cn-north-1")
         
+    def get_cce_pricing(
+        self,
+        cluster_type: str,
+        os_type: str = "Linux",
+        region: str = "cn-north-1"
+    ) -> Dict[str, Any]:
+        """
+        Fetch CCE (Cloud Container Engine) pricing from Huawei Cloud Billing API.
+        
+        Args:
+            cluster_type: CCE cluster type (e.g., 'standard', 'autopilot')
+            os_type: Operating system ('Linux' or 'Windows')
+            region: Huawei region code
+            
+        Returns:
+            Dictionary containing CCE pricing information
+        """
+        try:
+            # Simulated API call to Huawei CCE Pricing API
+            # Example: GET /v2/{project_id}/billing/ondemand/rating?product_type=CCE
+            
+            response = {
+                "provider": "huawei-cce",
+                "cluster_type": cluster_type,
+                "os_type": os_type.lower(),
+                "region": region,
+                "pricing": {
+                    "on_demand": {
+                        "price_per_hour": self._calculate_huawei_cce_hourly_rate(cluster_type, os_type),
+                        "currency": "USD",
+                        "unit": "hour"
+                    },
+                    "yearly_package": {
+                        "1_year": {
+                            "price_per_hour": self._calculate_huawei_cce_hourly_rate(cluster_type, os_type) * 0.65,
+                            "savings": "35%"
+                        },
+                        "3_year": {
+                            "price_per_hour": self._calculate_huawei_cce_hourly_rate(cluster_type, os_type) * 0.55,
+                            "savings": "45%"
+                        }
+                    }
+                },
+                "metadata": {
+                    "api_endpoint": f"{self.api_endpoint}/{self.project_id}/billing/ondemand/rating?product_type=CCE",
+                    "api_version": "v2",
+                    "last_updated": "2024-01-15T10:30:00Z"
+                }
+            }
+            
+            return response
+            
+        except Exception as e:
+            raise Exception(f"Huawei CCE Pricing API error: {str(e)}")
+    
+    def get_cci_pricing(
+        self,
+        instance_type: str,
+        os_type: str = "Linux",
+        region: str = "cn-north-1"
+    ) -> Dict[str, Any]:
+        """
+        Fetch CCI (Cloud Container Instance) pricing from Huawei Cloud Billing API.
+        
+        Args:
+            instance_type: CCI instance type (e.g., 'small', 'medium', 'large')
+            os_type: Operating system ('Linux' or 'Windows')
+            region: Huawei region code
+            
+        Returns:
+            Dictionary containing CCI pricing information
+        """
+        try:
+            # Simulated API call to Huawei CCI Pricing API
+            # Example: GET /v2/{project_id}/billing/ondemand/rating?product_type=CCI
+            
+            response = {
+                "provider": "huawei-cci",
+                "instance_type": instance_type,
+                "os_type": os_type.lower(),
+                "region": region,
+                "pricing": {
+                    "on_demand": {
+                        "price_per_hour": self._calculate_huawei_cci_hourly_rate(instance_type, os_type),
+                        "currency": "USD",
+                        "unit": "hour"
+                    },
+                    "pay_per_use": {
+                        "price_per_hour": self._calculate_huawei_cci_hourly_rate(instance_type, os_type),
+                        "currency": "USD",
+                        "unit": "hour",
+                        "note": "Serverless - pay only for running time"
+                    }
+                },
+                "metadata": {
+                    "api_endpoint": f"{self.api_endpoint}/{self.project_id}/billing/ondemand/rating?product_type=CCI",
+                    "api_version": "v2",
+                    "last_updated": "2024-01-15T10:30:00Z"
+                }
+            }
+            
+            return response
+            
+        except Exception as e:
+            raise Exception(f"Huawei CCI Pricing API error: {str(e)}")
+    
+    def get_cce_pricing(
+        self,
+        cluster_type: str,
+        os_type: str = "Linux",
+        region: str = "cn-north-1"
+    ) -> Dict[str, Any]:
+        """
+        Fetch CCE (Cloud Container Engine) pricing from Huawei Cloud Billing API.
+        
+        Args:
+            cluster_type: CCE cluster type (e.g., 'standard', 'autopilot')
+            os_type: Operating system ('Linux' or 'Windows')
+            region: Huawei region code
+            
+        Returns:
+            Dictionary containing CCE pricing information
+        """
+        try:
+            # Simulated API call to Huawei CCE Pricing API
+            # Example: GET /v2/{project_id}/billing/ondemand/rating?product_type=CCE
+            
+            response = {
+                "provider": "huawei-cce",
+                "cluster_type": cluster_type,
+                "os_type": os_type.lower(),
+                "region": region,
+                "pricing": {
+                    "on_demand": {
+                        "price_per_hour": self._calculate_huawei_cce_hourly_rate(cluster_type, os_type),
+                        "currency": "USD",
+                        "unit": "hour"
+                    },
+                    "yearly_package": {
+                        "1_year": {
+                            "price_per_hour": self._calculate_huawei_cce_hourly_rate(cluster_type, os_type) * 0.65,
+                            "savings": "35%"
+                        },
+                        "3_year": {
+                            "price_per_hour": self._calculate_huawei_cce_hourly_rate(cluster_type, os_type) * 0.55,
+                            "savings": "45%"
+                        }
+                    }
+                },
+                "metadata": {
+                    "api_endpoint": f"{self.api_endpoint}/{self.project_id}/billing/ondemand/rating?product_type=CCE",
+                    "api_version": "v2",
+                    "last_updated": "2024-01-15T10:30:00Z"
+                }
+            }
+            
+            return response
+            
+        except Exception as e:
+            raise Exception(f"Huawei CCE Pricing API error: {str(e)}")
+    
+    def get_cci_pricing(
+        self,
+        instance_type: str,
+        os_type: str = "Linux",
+        region: str = "cn-north-1"
+    ) -> Dict[str, Any]:
+        """
+        Fetch CCI (Cloud Container Instance) pricing from Huawei Cloud Billing API.
+        
+        Args:
+            instance_type: CCI instance type (e.g., 'small', 'medium', 'large')
+            os_type: Operating system ('Linux' or 'Windows')
+            region: Huawei region code
+            
+        Returns:
+            Dictionary containing CCI pricing information
+        """
+        try:
+            # Simulated API call to Huawei CCI Pricing API
+            # Example: GET /v2/{project_id}/billing/ondemand/rating?product_type=CCI
+            
+            response = {
+                "provider": "huawei-cci",
+                "instance_type": instance_type,
+                "os_type": os_type.lower(),
+                "region": region,
+                "pricing": {
+                    "on_demand": {
+                        "price_per_hour": self._calculate_huawei_cci_hourly_rate(instance_type, os_type),
+                        "currency": "USD",
+                        "unit": "hour"
+                    },
+                    "pay_per_use": {
+                        "price_per_hour": self._calculate_huawei_cci_hourly_rate(instance_type, os_type),
+                        "currency": "USD",
+                        "unit": "hour",
+                        "note": "Serverless - pay only for running time"
+                    }
+                },
+                "metadata": {
+                    "api_endpoint": f"{self.api_endpoint}/{self.project_id}/billing/ondemand/rating?product_type=CCI",
+                    "api_version": "v2",
+                    "last_updated": "2024-01-15T10:30:00Z"
+                }
+            }
+            
+            return response
+            
+        except Exception as e:
+            raise Exception(f"Huawei CCI Pricing API error: {str(e)}")
+    
     def get_compute_pricing(
         self,
         flavor_type: str,
@@ -176,6 +388,49 @@ class HuaweiPricingClient:
         }
         
         multiplier = flavor_multipliers.get(flavor_type, 2.0)
+        os_key = os_type.lower()
+        
+        return base_rates.get(os_key, base_rates["linux"]) * multiplier
+    
+    def _calculate_huawei_cce_hourly_rate(self, cluster_type: str, os_type: str) -> float:
+        """
+        Calculate hourly rate for CCE based on cluster type and OS.
+        This simulates the pricing calculation from Huawei CCE API.
+        """
+        base_rates = {
+            "linux": 0.045,
+            "windows": 0.090
+        }
+        
+        cluster_multipliers = {
+            "standard": 1.0,
+            "autopilot": 1.2,
+            "dedicated": 1.5
+        }
+        
+        multiplier = cluster_multipliers.get(cluster_type, 1.0)
+        os_key = os_type.lower()
+        
+        return base_rates.get(os_key, base_rates["linux"]) * multiplier
+    
+    def _calculate_huawei_cci_hourly_rate(self, instance_type: str, os_type: str) -> float:
+        """
+        Calculate hourly rate for CCI based on instance type and OS.
+        This simulates the pricing calculation from Huawei CCI API.
+        """
+        base_rates = {
+            "linux": 0.044,
+            "windows": 0.088
+        }
+        
+        instance_multipliers = {
+            "small": 0.5,
+            "medium": 1.0,
+            "large": 2.0,
+            "xlarge": 4.0
+        }
+        
+        multiplier = instance_multipliers.get(instance_type, 1.0)
         os_key = os_type.lower()
         
         return base_rates.get(os_key, base_rates["linux"]) * multiplier

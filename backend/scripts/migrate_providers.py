@@ -124,8 +124,62 @@ DEFAULT_PROVIDERS = [
             "turkey-local": 0.95  # Local region discount
         },
         "available_regions": ["europe", "middle-east", "asia-pacific", "north-america", "latin-america", "turkey-local"],
-        "logo": "Huawei",
+        "logo": "huawei",
         "description": "Global cloud provider with strong presence in Asia and Turkey"
+    },
+    {
+        "name": "huawei-cce",
+        "display_name": "Huawei Cloud Container Engine (CCE)",
+        "short_name": "Huawei CCE",
+        "is_active": True,
+        "compute_rates": {
+            "linux": 0.045,
+            "windows": 0.090
+        },
+        "storage_rates": {
+            "standard-hdd": 0.040,
+            "standard-ssd": 0.080,
+            "premium-ssd": 0.125,
+            "ultra-ssd": 0.160
+        },
+        "region_multipliers": {
+            "europe": 1.0,
+            "middle-east": 0.95,
+            "asia-pacific": 0.92,
+            "north-america": 1.1,
+            "latin-america": 1.0,
+            "turkey-local": 0.85
+        },
+        "available_regions": ["europe", "middle-east", "asia-pacific", "north-america", "latin-america", "turkey-local"],
+        "logo": "huawei",
+        "description": "Huawei Cloud Container Engine - Managed Kubernetes service for containerized applications"
+    },
+    {
+        "name": "huawei-cci",
+        "display_name": "Huawei Cloud Container Instance (CCI)",
+        "short_name": "Huawei CCI",
+        "is_active": True,
+        "compute_rates": {
+            "linux": 0.044,
+            "windows": 0.088
+        },
+        "storage_rates": {
+            "standard-hdd": 0.039,
+            "standard-ssd": 0.078,
+            "premium-ssd": 0.122,
+            "ultra-ssd": 0.155
+        },
+        "region_multipliers": {
+            "europe": 1.0,
+            "middle-east": 0.95,
+            "asia-pacific": 0.92,
+            "north-america": 1.1,
+            "latin-america": 1.0,
+            "turkey-local": 0.85
+        },
+        "available_regions": ["europe", "middle-east", "asia-pacific", "north-america", "latin-america", "turkey-local"],
+        "logo": "huawei",
+        "description": "Huawei Cloud Container Instance - Serverless container service for quick deployment"
     }
 ]
 

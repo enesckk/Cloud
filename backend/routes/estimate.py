@@ -44,7 +44,9 @@ def estimate():
                     "aws": "t3.large",
                     "azure": "Standard_B4ms",
                     "gcp": "e2-standard-2",
-                    "huawei": "s6.large.2"
+                    "huawei": "s6.large.2",
+                    "huawei-cce": "standard",  # CCE cluster type
+                    "huawei-cci": "medium"     # CCI instance type
                 }
                 
                 # Fetch pricing from provider APIs (for demonstration only)
