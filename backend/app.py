@@ -36,15 +36,26 @@ def create_app():
     # Enable CORS for frontend integration
     # Get frontend URL from environment variable or allow all origins
     frontend_url = os.getenv("FRONTEND_URL", "*")
-    allowed_origins = [frontend_url] if frontend_url != "*" else "*"
     
-    CORS(app, resources={
-        r"/api/*": {
-            "origins": allowed_origins,
-            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Authorization"]
-        }
-    })
+    # Support multiple origins (comma-separated) or single origin
+    if frontend_url != "*" and "," in frontend_url:
+        allowed_origins = [url.strip() for url in frontend_url.split(",")]
+    elif frontend_url != "*":
+        allowed_origins = [frontend_url]
+    else:
+        allowed_origins = "*"
+    
+    # Enable CORS for all routes
+    CORS(app, 
+         resources={
+             r"/api/*": {
+                 "origins": allowed_origins,
+                 "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+                 "allow_headers": ["Content-Type", "Authorization"],
+                 "supports_credentials": True
+             }
+         },
+         supports_credentials=True)
     
     # Initialize database
     try:
