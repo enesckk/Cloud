@@ -14,7 +14,7 @@ parent_dir = os.path.dirname(current_dir)
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
-from flask import Flask
+from flask import Flask, request
 from flask_cors import CORS
 from dotenv import load_dotenv
 from backend.routes.estimate import estimate_bp
@@ -45,17 +45,35 @@ def create_app():
     else:
         allowed_origins = "*"
     
-    # Enable CORS for all routes
+    # Enable CORS for all routes with comprehensive settings
     CORS(app, 
          resources={
              r"/api/*": {
                  "origins": allowed_origins,
-                 "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-                 "allow_headers": ["Content-Type", "Authorization"],
-                 "supports_credentials": True
+                 "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+                 "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
+                 "expose_headers": ["Content-Type", "Authorization"],
+                 "supports_credentials": True,
+                 "max_age": 3600
              }
          },
-         supports_credentials=True)
+         supports_credentials=True,
+         automatic_options=True)  # Automatically handle OPTIONS requests
+    
+    # Manual OPTIONS handler for additional safety
+    @app.before_request
+    def handle_preflight():
+        if request.method == "OPTIONS":
+            response = app.make_default_options_response()
+            headers = response.headers
+            if frontend_url != "*":
+                headers['Access-Control-Allow-Origin'] = frontend_url if isinstance(frontend_url, str) else frontend_url[0] if frontend_url else "*"
+            else:
+                headers['Access-Control-Allow-Origin'] = "*"
+            headers['Access-Control-Allow-Methods'] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+            headers['Access-Control-Allow-Headers'] = "Content-Type, Authorization, X-Requested-With"
+            headers['Access-Control-Max-Age'] = "3600"
+            return response
     
     # Initialize database
     try:
