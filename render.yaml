@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: cloudguide-backend
+    env: python
+    region: frankfurt  # veya size en yakın region
+    plan: free  # veya starter, professional
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && python app.py
+    envVars:
+      - key: DATABASE_URL
+        sync: false  # Manuel olarak Render dashboard'dan ekleyin
+      - key: FLASK_ENV
+        value: production
+      - key: FLASK_DEBUG
+        value: "False"
+      - key: FLASK_RUN_HOST
+        value: 0.0.0.0
+      - key: FLASK_RUN_PORT
+        value: "5000"
+      - key: FRONTEND_URL
+        sync: false  # Vercel frontend URL'inizi ekleyin

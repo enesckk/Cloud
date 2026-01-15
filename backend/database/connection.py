@@ -10,10 +10,23 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 # Database configuration from environment variables
+# Supports Neon PostgreSQL (for Render/Vercel) and local PostgreSQL
+# Neon connection strings: postgresql://user:pass@host/db?sslmode=require
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql://cloudguide_user:cloudguide_pass@localhost:5433/cloudguide_db"
 )
+
+# Ensure SSL mode for Neon PostgreSQL (if not already specified)
+# Neon requires SSL connections
+if "neon.tech" in DATABASE_URL or "neon.tech" in DATABASE_URL.lower():
+    if "sslmode" not in DATABASE_URL:
+        separator = "&" if "?" in DATABASE_URL else "?"
+        DATABASE_URL = f"{DATABASE_URL}{separator}sslmode=require"
+    
+    # Convert postgres:// to postgresql:// if needed (Neon uses postgresql://)
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # Create SQLAlchemy engine
 engine = create_engine(

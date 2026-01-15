@@ -34,9 +34,13 @@ def create_app():
     app = Flask(__name__)
     
     # Enable CORS for frontend integration
+    # Get frontend URL from environment variable or allow all origins
+    frontend_url = os.getenv("FRONTEND_URL", "*")
+    allowed_origins = [frontend_url] if frontend_url != "*" else "*"
+    
     CORS(app, resources={
         r"/api/*": {
-            "origins": "*",
+            "origins": allowed_origins,
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization"]
         }
@@ -62,4 +66,6 @@ def create_app():
 
 if __name__ == "__main__":
     app = create_app()
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    # Render provides PORT environment variable, fallback to 5000 for local development
+    port = int(os.getenv("PORT", 5000))
+    app.run(debug=os.getenv("FLASK_DEBUG", "False").lower() == "true", host="0.0.0.0", port=port)
