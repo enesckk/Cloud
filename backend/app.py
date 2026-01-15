@@ -37,9 +37,13 @@ def create_app():
     # Get frontend URL from environment variable or allow all origins
     frontend_url = os.getenv("FRONTEND_URL", "*")
     
+    # Remove trailing slash from URL (CORS requires exact match)
+    if frontend_url != "*":
+        frontend_url = frontend_url.rstrip('/')
+    
     # Support multiple origins (comma-separated) or single origin
     if frontend_url != "*" and "," in frontend_url:
-        allowed_origins = [url.strip() for url in frontend_url.split(",")]
+        allowed_origins = [url.strip().rstrip('/') for url in frontend_url.split(",")]
     elif frontend_url != "*":
         allowed_origins = [frontend_url]
     else:
@@ -66,10 +70,20 @@ def create_app():
         if request.method == "OPTIONS":
             response = app.make_default_options_response()
             headers = response.headers
-            if frontend_url != "*":
-                headers['Access-Control-Allow-Origin'] = frontend_url if isinstance(frontend_url, str) else frontend_url[0] if frontend_url else "*"
+            # Get origin from request
+            origin = request.headers.get('Origin')
+            
+            # Check if origin is allowed
+            if allowed_origins == "*":
+                headers['Access-Control-Allow-Origin'] = "*"
+            elif origin and origin in allowed_origins:
+                headers['Access-Control-Allow-Origin'] = origin
+            elif frontend_url != "*":
+                # Use frontend_url if origin doesn't match (fallback)
+                headers['Access-Control-Allow-Origin'] = frontend_url if isinstance(frontend_url, str) else allowed_origins[0] if allowed_origins else "*"
             else:
                 headers['Access-Control-Allow-Origin'] = "*"
+            
             headers['Access-Control-Allow-Methods'] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
             headers['Access-Control-Allow-Headers'] = "Content-Type, Authorization, X-Requested-With"
             headers['Access-Control-Max-Age'] = "3600"
