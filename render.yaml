@@ -2,6 +2,7 @@ services:
   - type: web
     name: cloudguide-backend
     env: python
+    pythonVersion: 3.11  # Python 3.13 yerine 3.11 kullan (SQLAlchemy uyumluluğu için)
     region: frankfurt  # veya size en yakın region
     plan: free  # veya starter, professional
     buildCommand: pip install -r backend/requirements.txt
