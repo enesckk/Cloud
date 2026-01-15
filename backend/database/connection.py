@@ -29,6 +29,13 @@ if "neon.tech" in DATABASE_URL or "neon.tech" in DATABASE_URL.lower():
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # Create SQLAlchemy engine
+# Use psycopg (psycopg3) driver for Python 3.13 compatibility
+# If using psycopg3, connection string should use postgresql+psycopg://
+# Otherwise, SQLAlchemy will auto-detect the driver
+if DATABASE_URL.startswith("postgresql://"):
+    # Use psycopg (psycopg3) driver for better Python 3.13 support
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
+
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,  # Verify connections before using
